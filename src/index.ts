@@ -10,6 +10,7 @@ export * from "./query"
 export * from "./search"
 export * from "./SearchBuilder"
 export * from "./services"
+export * from "./log"
 
 export interface Config {
   connectString?: string | undefined

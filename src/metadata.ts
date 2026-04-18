@@ -88,3 +88,10 @@ export interface FullExecutor extends Executor {
   executeScalar<T>(sql: string, args?: any[], ctx?: any): Promise<T>
   count(sql: string, args?: any[], ctx?: any): Promise<number>
 }
+export interface FullTransaction extends FullExecutor {
+  commit(): Promise<void>
+  rollback(): Promise<void>
+}
+export interface FullDB extends FullExecutor {
+  beginTransaction(): Promise<FullTransaction>
+}

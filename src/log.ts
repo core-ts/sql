@@ -1,4 +1,4 @@
-import { Attribute, FullExecutor, Statement, StringMap } from "./metadata"
+import { Attribute, FullDB, FullExecutor, FullTransaction, Statement, StringMap } from "./metadata"
 
 export interface SimpleMap {
   [key: string]: string | number | boolean | Date
@@ -27,7 +27,7 @@ export function log(db: FullExecutor, isLog: boolean | undefined | null, logger:
   return new LogExecutor(db, logger.error, logger.info, q, result, r, duration)
 }
 export function useLog(
-  db: FullExecutor,
+  db: FullDB,
   isLog: boolean | undefined | null,
   err: ((msg: string, m?: SimpleMap) => void) | undefined,
   lg?: (msg: string, m?: SimpleMap) => void,
@@ -35,34 +35,32 @@ export function useLog(
   result?: string,
   r?: string,
   duration?: string,
-): FullExecutor {
+): FullDB {
   if (!isLog) {
     return db
   }
   if (err) {
-    return new LogExecutor(db, err, lg, q, result, r, duration)
+    return new LogDB(db, err, lg, q, result, r, duration)
   }
   return db
 }
 // tslint:disable-next-line:max-classes-per-file
 export class LogExecutor implements FullExecutor {
   constructor(
-    public db: FullExecutor,
-    err: (msg: string, m?: SimpleMap) => void,
+    protected executor: FullExecutor,
+    protected error: (msg: string, m?: SimpleMap) => void,
     lg?: (msg: string, m?: SimpleMap) => void,
     q?: string,
     result?: string,
     r?: string,
     duration?: string,
   ) {
-    this.driver = db.driver
+    this.driver = executor.driver
     this.duration = duration && duration.length > 0 ? duration : "duration"
     this.sql = q === undefined ? "" : q
-    this.return = r !== undefined && r != null ? r : "count"
     this.result = result !== undefined && result != null ? result : ""
-    // this.err = (er ? er : 'error');
+    this.return = r !== undefined && r != null ? r : "count"
     this.log = lg
-    this.error = err
     this.param = this.param.bind(this)
     this.execute = this.execute.bind(this)
     this.executeBatch = this.executeBatch.bind(this)
@@ -72,7 +70,6 @@ export class LogExecutor implements FullExecutor {
     this.count = this.count.bind(this)
   }
   log?: (msg: string, m?: SimpleMap, ctx?: any) => void
-  error: (msg: string, m?: SimpleMap, ctx?: any) => void
   driver: string
   duration: string
   sql: string
@@ -80,11 +77,11 @@ export class LogExecutor implements FullExecutor {
   result: string
   // err: string;
   param(i: number): string {
-    return this.db.param(i)
+    return this.executor.param(i)
   }
   execute(sql: string, args?: any[], ctx?: any): Promise<number> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .execute(sql, args, ctx)
       .then((v) => {
         setTimeout(() => {
@@ -118,7 +115,7 @@ export class LogExecutor implements FullExecutor {
   }
   executeBatch(statements: Statement[], firstSuccess?: boolean, ctx?: any): Promise<number> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .executeBatch(statements, firstSuccess, ctx)
       .then((v) => {
         setTimeout(() => {
@@ -152,7 +149,7 @@ export class LogExecutor implements FullExecutor {
   }
   query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .query<T>(sql, args, m, bools, ctx)
       .then((v) => {
         setTimeout(() => {
@@ -191,7 +188,7 @@ export class LogExecutor implements FullExecutor {
   }
   queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T | null> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .queryOne<T>(sql, args, m, bools, ctx)
       .then((v) => {
         setTimeout(() => {
@@ -228,7 +225,7 @@ export class LogExecutor implements FullExecutor {
   }
   executeScalar<T>(sql: string, args?: any[], ctx?: any): Promise<T> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .executeScalar<T>(sql, args, ctx)
       .then((v) => {
         setTimeout(() => {
@@ -265,7 +262,7 @@ export class LogExecutor implements FullExecutor {
   }
   count(sql: string, args?: any[], ctx?: any): Promise<number> {
     const t1 = new Date()
-    return this.db
+    return this.executor
       .count(sql, args)
       .then((v) => {
         setTimeout(() => {
@@ -324,3 +321,40 @@ const getDurationInMilliseconds = (start: [number, number] | undefined) => {
   return (diff[0] * NS_PER_SEC + diff[1]) / NS_TO_MS;
 };
 */
+export class LogTransaction extends LogExecutor implements FullTransaction {
+  constructor(
+    protected tx: FullTransaction,
+    err: (msg: string, m?: SimpleMap) => void,
+    lg?: (msg: string, m?: SimpleMap) => void,
+    q?: string,
+    result?: string,
+    r?: string,
+    duration?: string,
+  ) {
+    super(tx, err, lg, q, result, r, duration)
+  }
+  commit(): Promise<void> {
+    return this.tx.commit()
+  }
+  rollback(): Promise<void> {
+    return this.tx.rollback()
+  }
+}
+export class LogDB extends LogExecutor implements FullDB {
+  constructor(
+    protected db: FullDB,
+    err: (msg: string, m?: SimpleMap) => void,
+    lg?: (msg: string, m?: SimpleMap) => void,
+    q?: string,
+    result?: string,
+    r?: string,
+    duration?: string,
+  ) {
+    super(db, err, lg, q, result, r, duration)
+  }
+  beginTransaction(): Promise<FullTransaction> {
+    return this.db.beginTransaction().then(tx => {
+      return new LogTransaction(tx, this.error, this.log, this.sql, this.result, this.return, this.duration)
+    })
+  }
+}
