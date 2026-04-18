@@ -1,7 +1,7 @@
 {
-  "name": "query-core",
-  "version": "0.6.7",
-  "description": "query",
+  "name": "sql-core",
+  "version": "0.1.1",
+  "description": "sql",
   "main": "./lib/index.js",
   "types": "./src/index.ts",
   "scripts": {
@@ -20,8 +20,9 @@
     "url": "git@github.com/core-ts/sql"
   },
   "keywords": [
+    "sql",
+    "sql-core",
     "query",
-    "query-core",
-    "sql"
+    "query-core"
   ]
 }
