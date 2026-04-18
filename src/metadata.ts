@@ -62,3 +62,29 @@ export interface Attribute {
 export interface Attributes {
   [key: string]: Attribute
 }
+
+export interface MinDB {
+  driver?: string
+  param(i: number): string
+  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]>
+}
+export interface Executor {
+  driver: string
+  param(i: number): string
+  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]>
+  execute(sql: string, args?: any[], ctx?: any): Promise<number>
+  executeBatch(statements: Statement[], firstSuccess?: boolean, ctx?: any): Promise<number>
+}
+export interface Transaction extends Executor {
+  commit(): Promise<void>
+  rollback(): Promise<void>
+}
+export interface DB extends Executor {
+  beginTransaction(): Promise<Transaction>
+}
+
+export interface FullExecutor extends Executor {
+  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T | null>
+  executeScalar<T>(sql: string, args?: any[], ctx?: any): Promise<T>
+  count(sql: string, args?: any[], ctx?: any): Promise<number>
+}

@@ -1,18 +1,13 @@
-import { buildMetadata, param } from "./build"
-import { Attribute, Attributes, Statement, StringMap } from "./metadata"
-import { buildSort as bs, buildDollarParam, buildMsSQLParam, buildOracleParam, buildQuery, LikeType } from "./query"
-import { buildFromQuery, oracle, SearchResult } from "./search"
+import { buildMetadata } from "./build"
+import { Attribute, Attributes, MinDB, Statement, StringMap } from "./metadata"
+import { buildSort as bs, buildQuery, LikeType } from "./query"
+import { buildFromQuery, SearchResult } from "./search"
 
 export const postgres = "postgres"
 export const mssql = "mssql"
 export const mysql = "mysql"
 export const sqlite = "sqlite"
 
-interface MinDB {
-  driver?: string
-  param(i: number): string
-  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]>
-}
 export class SearchBuilder<T, S> {
   protected map?: StringMap
   protected bools?: Attribute[]
