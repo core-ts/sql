@@ -76,8 +76,12 @@ export function buildQuery<S>(
   const args: any[] = []
   if (sq && sq.length > 0) {
     q = s[sq]
-    //delete s[sq]
-    if (q === "") {
+    if (typeof q === "string") {
+      q = q.replace(/%/g, "\\%").replace(/_/g, "\\_")
+      if (q === "") {
+        q = undefined
+      }
+    } else {
       q = undefined
     }
   }
@@ -117,9 +121,13 @@ export function buildQuery<S>(
               args.push(v + "%")
             }
           }
-        } else if (typeof v === "number" || v instanceof Date) {
+        } else if (typeof v === "number") {
+          const operator = attr.operator ? attr.operator : ">="
+          filters.push(`${field} ${operator} ${v}`)
+        } else if (v instanceof Date) {
           const operator = attr.operator ? attr.operator : ">="
           filters.push(`${field} ${operator} ${param(i++)}`)
+          args.push(v)
         } else if (attr.type === "ObjectId") {
           filters.push(`${field} = ${param(i++)}`)
           args.push(v)
