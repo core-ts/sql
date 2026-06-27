@@ -1,16 +1,17 @@
 import { resource } from "./build"
 import { Attribute, StringMap } from "./metadata"
 
-export * from "./batch"
-export * from "./build"
-export * from "./client"
-export * from "./health"
 export * from "./metadata"
+export * from "./build"
 export * from "./query"
 export * from "./search"
 export * from "./SearchBuilder"
 export * from "./services"
+export * from "./batch"
+export * from "./health"
 export * from "./log"
+export * from "./map"
+export * from "./client"
 
 export interface Config {
   connectString?: string | undefined

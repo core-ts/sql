@@ -1,6 +1,6 @@
 import { buildMetadata } from "./build"
 import { Attribute, Attributes, MinDB, Statement, StringMap } from "./metadata"
-import { buildSort as bs, buildQuery, LikeType } from "./query"
+import { buildSort, buildQuery, LikeType } from "./query"
 import { buildFromQuery, SearchResult } from "./search"
 
 export const postgres = "postgres"
@@ -51,7 +51,7 @@ export class SearchBuilder<T, S> {
     protected sort?: string,
     q?: string,
     excluding?: string,
-    buildSort?: (sort?: string, map?: Attributes | StringMap) => string,
+    buildSort2?: (sort?: string, map?: Attributes | StringMap) => string,
     total?: string,
   ) {
     if (attrs) {
@@ -67,7 +67,7 @@ export class SearchBuilder<T, S> {
       this.primaryKeys = []
     }
     this.buildQuery = buildQ ? buildQ : buildQuery
-    this.buildSort = buildSort ? buildSort : bs
+    this.buildSort = buildSort2 ? buildSort2 : buildSort
     this.q = q && q.length > 0 ? q : "q"
     this.excluding = excluding && excluding.length > 0 ? excluding : "excluding"
     this.search = this.search.bind(this)
