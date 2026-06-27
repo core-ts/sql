@@ -6,7 +6,7 @@ export class resource {
   static ignoreDatetime?: boolean
 }
 export function params(length: number, p: (i: number) => string, from?: number): string[] {
-  if (from === undefined || from == null) {
+  if (from == null) { // (from === null || from === undefined) {
     from = 0
   }
   const ps: string[] = []
@@ -135,7 +135,7 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
     let v = o[k]
     const attr = attrs[k]
     if (attr && !attr.ignored && !attr.noinsert) {
-      if (v === undefined || v == null) {
+      if (v == null) { // (v === null || v === undefined) {
         v = attr.default
       }
       if (v !== undefined && v != null) {
@@ -241,13 +241,13 @@ export function buildToInsertBatch<T>(
         const attr = attrs[k]
         if (attr && !attr.ignored && !attr.noinsert) {
           let v = (obj as any)[k]
-          if (v === undefined || v === null) {
+          if (v == null) {// (v === null || v === undefined) {
             v = attr.default
           }
           // let x: string;
           if (attr.version) {
             values.push("1")
-          } else if (v === undefined || v == null) {
+          } else if (v == null) { // (v === null || v === undefined) {
             values.push("null")
           } else if (v === "") {
             values.push(`''`)
@@ -300,7 +300,7 @@ export function buildToInsertBatch<T>(
         let v = (obj as any)[k]
         const attr = attrs[k]
         if (attr && !attr.ignored && !attr.noinsert) {
-          if (v === undefined || v == null) {
+          if (v == null) { // (v === null || v === undefined) {
             v = attr.default
           }
           if (v !== undefined && v != null) {
@@ -400,7 +400,7 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
         } else if (!attr.noupdate) {
           const field = attr.column ? attr.column : k
           let x: string
-          if (v == null) {
+          if (v === null) {
             x = "null"
           } else if (v === "") {
             x = `''`
@@ -439,13 +439,13 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
   for (const pk of pks) {
     const na = pk.name ? pk.name : ""
     const v = o[na]
-    if (!v) {
+    if (v == null) {// (v === null || v === undefined) {
       return { query: "", params: args }
     } else {
       const attr = attrs[na]
       const field = attr.column ? attr.column : pk.name
       let x: string
-      if (v == null) {
+      if (v === null) {
         x = "null"
       } else if (v === "") {
         x = `''`
@@ -528,7 +528,7 @@ export function buildToUpdateBatch<T>(
         if (attr && !attr.ignored && !attr.key && !attr.version && !attr.noupdate) {
           const field = attr.column ? attr.column : k
           let x: string
-          if (v == null) {
+          if (v === null) {
             x = "null"
           } else if (v === "") {
             x = `''`
@@ -563,13 +563,13 @@ export function buildToUpdateBatch<T>(
     for (const pk of meta.keys) {
       const na = pk.name ? pk.name : ""
       const v = o[na]
-      if (!v) {
+      if (v == null) { // (v === null || v === undefined) {
         valid = false
       } else {
         const attr = attrs[na]
         const field = attr.column ? attr.column : pk.name
         let x: string
-        if (v == null) {
+        if (v === null) {
           x = "null"
         } else if (v === "") {
           x = `''`

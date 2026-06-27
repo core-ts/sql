@@ -92,10 +92,10 @@ const S = "SELECT"
 const d = " distinct "
 const D = " DISTINCT "
 export function buildPagingQuery(sql: string, limit: number, offset?: number, provider?: string): string {
-  if (limit === undefined || limit == null) {
+  if (limit == null) { // (limit === null || limit === undefined) {
     limit = 0
   }
-  if (offset === undefined || offset == null) {
+  if (offset == null) { // (offset === null || offset === undefined) {
     offset = 0
   }
   if (provider !== oracle) {

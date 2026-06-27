@@ -52,7 +52,7 @@ export function handleBool<T>(objs: T[], bools: Attribute[]): T[] {
         const v = o[field.name]
         if (typeof v !== "boolean" && v != null && v !== undefined) {
           const b = field.true
-          if (b == null || b === undefined) {
+          if (b == null) { // (b === null || b === undefined) {
             // tslint:disable-next-line:triple-equals
             o[field.name] = "true" == v || "1" == v || "t" == v || "y" == v || "on" == v
           } else {

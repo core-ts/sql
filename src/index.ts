@@ -47,7 +47,7 @@ export function toArray(arr: any[]): any[] {
   const p: any[] = []
   const l = arr.length
   for (let i = 0; i < l; i++) {
-    if (arr[i] === undefined || arr[i] == null) {
+    if (arr[i] == null) { //(arr[i] === null || arr[i] === undefined) {
       p.push(null)
     } else {
       if (typeof arr[i] === "object") {
