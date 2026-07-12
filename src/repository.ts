@@ -1,7 +1,7 @@
 import { attributes, buildToDelete, buildToInsert, buildToUpdate, exist, buildMetadata, select } from "./build"
 import { Attribute, Attributes, Executor, MinDB, Statement, StringMap, Transaction } from "./metadata"
 import { LikeType } from "./query"
-import { SearchBuilder } from "./SearchBuilder"
+import { SearchBuilder } from "./search-repository"
 
 export interface Filter {
   fields?: string[]
