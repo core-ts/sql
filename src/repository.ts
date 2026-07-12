@@ -1,7 +1,7 @@
 import { attributes, buildToDelete, buildToInsert, buildToUpdate, exist, buildMetadata, select } from "./build"
 import { Attribute, Attributes, Executor, MinDB, Statement, StringMap, Transaction } from "./metadata"
 import { LikeType } from "./query"
-import { SearchBuilder } from "./search-repository"
+import { SearchRepository } from "./search-repository"
 
 export interface Filter {
   fields?: string[]
@@ -245,7 +245,7 @@ export class CRUDRepository<T, ID> extends SqlWriter<T> {
 export const GenericRepository = CRUDRepository
 export const SqlGenericRepository = CRUDRepository
 
-export class SqlSearchWriter<T, S> extends SearchBuilder<T, S> {
+export class SqlSearchWriter<T, S> extends SearchRepository<T, S> {
   constructor(
     protected db: Executor,
     table: string,
@@ -407,7 +407,7 @@ export class SqlRepository<T, ID, S> extends SqlSearchWriter<T, S> {
 export const Repository = SqlRepository
 
 // tslint:disable-next-line:max-classes-per-file
-export class Query<T, ID, S> extends SearchBuilder<T, S> {
+export class Query<T, ID, S> extends SearchRepository<T, S> {
   constructor(
     db: MinDB,
     table: string,

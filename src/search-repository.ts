@@ -8,7 +8,7 @@ export const mssql = "mssql"
 export const mysql = "mysql"
 export const sqlite = "sqlite"
 
-export class SearchBuilder<T, S> {
+export class SearchRepository<T, S> {
   protected map?: StringMap
   protected bools?: Attribute[]
   protected primaryKeys: Attribute[]
@@ -100,4 +100,4 @@ export class SearchBuilder<T, S> {
     }
   }
 }
-export const SearchRepository = SearchBuilder
+export const SearchBuilder = SearchRepository
