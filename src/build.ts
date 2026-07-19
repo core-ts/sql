@@ -138,7 +138,7 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
       if (v == null) { // (v === null || v === undefined) {
         v = attr.default
       }
-      if (v !== undefined && v != null) {
+      if (v != null) {
         const field = attr.column ? attr.column : k
         cols.push(field)
         if (k === ver) {
@@ -303,7 +303,7 @@ export function buildToInsertBatch<T>(
           if (v == null) { // (v === null || v === undefined) {
             v = attr.default
           }
-          if (v !== undefined && v != null) {
+          if (v != null) {
             const field = attr.column ? attr.column : k
             cols.push(field)
             if (k === ver) {
@@ -741,11 +741,9 @@ export function setValue<T, V>(obj: T, path: string, value: V): void {
   }
   o[paths[paths.length - 1]] = value
 }
-const n = "NaN"
 export function toString(v: number): string {
-  let x = "" + v
-  if (x === n) {
-    x = "null"
+  if (v === v && v !== Infinity && v !== -Infinity) {
+    return "" + v
   }
-  return x
+  return "null"
 }
