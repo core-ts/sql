@@ -137,6 +137,9 @@ export function buildQuery<S>(
             } else if (attr.operator === "like") {
               filters.push(`${field} ${like} ${param(i++)}`)
               args.push("%" + v + "%")
+            } else if (attr.operator === "!=" || attr.operator === "<>") {
+              filters.push(`${field} ${attr.operator} ${param(i++)}`)
+              args.push(v)
             } else {
               filters.push(`${field} ${like} ${param(i++)}`)
               args.push(v + "%")
@@ -208,6 +211,12 @@ export function buildQuery<S>(
               } else if (v["lower"]) {
                 filters.push(`${field} > ${v["lower"]}`)
               }
+            }
+          } else if (attr.type === "boolean") {
+            const operator = attr.operator
+            if (operator === "=" || operator === "!=" || operator === "<>") {
+              filters.push(`${field} ${operator} ${param(i++)}`)
+              args.push(v)
             }
           }
         }
@@ -318,6 +327,9 @@ export function buildMatch(v: string, match: string): string | RegExp {
 }
 export function isDateRange<T>(obj: T): boolean {
   const keys: string[] = Object.keys(obj as any)
+  if (keys.length === 0) {
+    return false
+  }
   for (const key of keys) {
     const v = (obj as any)[key]
     if (!(v instanceof Date)) {
@@ -328,6 +340,9 @@ export function isDateRange<T>(obj: T): boolean {
 }
 export function isNumberRange<T>(obj: T): boolean {
   const keys: string[] = Object.keys(obj as any)
+  if (keys.length === 0) {
+    return false
+  }
   for (const key of keys) {
     const v = (obj as any)[key]
     if (typeof v !== "number") {

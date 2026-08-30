@@ -83,6 +83,9 @@ export class SearchRepository<T, S> {
     }
     const st = this.sort ? this.sort : "sort"
     let sn = (filter as any)[st] as string
+    if (sn && typeof sn === "string" && sn.length > 0) {
+      sn = sn.trim()
+    }
     if (!sn && this.db.driver === mssql) {
       if (this.primaryKeys && this.primaryKeys.length > 0) {
         const keys = this.primaryKeys.map((k) => k.column ? k.column : k.name)
