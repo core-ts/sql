@@ -125,7 +125,7 @@ export function buildPagingQueryForOracleOrMssql(sql: string, limit: number, off
     i = sql.indexOf(S)
   }
   if (i >= 0) {
-    return `${sql.substring(0, l)} count(*) over() as ${total}, ${sql.substring(l)} offset ${offset} rows fetch next ${limit} rows only`
+    return `${sql.substring(0, i + d.length)} count(*) over() as ${total}, ${sql.substring(l)} offset ${offset} rows fetch next ${limit} rows only`
   } else {
     return `${sql} offset ${offset} rows fetch next ${limit} rows only`
   }
