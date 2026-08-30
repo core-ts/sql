@@ -33,11 +33,11 @@ export function buildFromQuery<T>(
   } else {
     const ipage = !page || page <= 0 ? 1 : page
     const offset = getOffset(limit, ipage)
-    if (provider === oracle) {
+    if (provider === oracle || provider === mssql) {
       if (!totalCol || totalCol.length === 0) {
         totalCol = "total"
       }
-      const sql2 = buildPagingQueryForOracle(sql, limit, offset, totalCol)
+      const sql2 = buildPagingQueryForOracleOrMssql(sql, limit, offset, totalCol)
       return queryAndCount(query, sql2, params, totalCol, mp, bools)
     } else {
       const sql2 = buildPagingQuery(sql, limit, offset)
@@ -87,6 +87,7 @@ export function queryAndCount<T>(
   })
 }
 export const oracle = "oracle"
+export const mssql = "mssql"
 const s = "select"
 const S = "SELECT"
 const d = " distinct "
@@ -101,10 +102,10 @@ export function buildPagingQuery(sql: string, limit: number, offset?: number, pr
   if (provider !== oracle) {
     return `${sql} limit ${limit} offset ${offset}`
   } else {
-    return buildPagingQueryForOracle(sql, limit, offset)
+    return buildPagingQueryForOracleOrMssql(sql, limit, offset)
   }
 }
-export function buildPagingQueryForOracle(sql: string, limit: number, offset?: number, total?: string) {
+export function buildPagingQueryForOracleOrMssql(sql: string, limit: number, offset?: number, total?: string) {
   if (!total || total.length === 0) {
     total = "total"
   }

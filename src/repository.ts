@@ -174,7 +174,7 @@ export class SqlWriter<T> {
     if (this.updatedAt) {
       obj2[this.updatedAt] = new Date()
     }
-    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.version)
+    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.primaryKeys, this.version)
     if (stmt.query) {
       const db = tx ? tx: this.db
       return db.execute(stmt.query, stmt.params)
@@ -312,7 +312,7 @@ export class SqlSearchWriter<T, S> extends SearchRepository<T, S> {
     if (this.updatedAt) {
       obj2[this.updatedAt] = new Date()
     }
-    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.version)
+    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.primaryKeys, this.version)
     if (stmt.query) {
       const db = tx ? tx: this.db
       return db.execute(stmt.query, stmt.params)

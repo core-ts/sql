@@ -5,9 +5,9 @@ export interface SimpleMap {
 }
 export interface Logger {
   level: number
-  debug(msg: string, m?: SimpleMap, ctx?: any): void
-  info(msg: string, m?: SimpleMap, ctx?: any): void
-  error(msg: string, m?: SimpleMap, ctx?: any): void
+  debug(msg: string, m?: SimpleMap): void
+  info(msg: string, m?: SimpleMap): void
+  error(msg: string, m?: SimpleMap): void
   isDebugEnabled(): boolean
   isInfoEnabled(): boolean
 }
@@ -69,7 +69,7 @@ export class LogExecutor implements FullExecutor {
     this.executeScalar = this.executeScalar.bind(this)
     this.count = this.count.bind(this)
   }
-  log?: (msg: string, m?: SimpleMap, ctx?: any) => void
+  log?: (msg: string, m?: SimpleMap) => void
   driver: string
   duration: string
   sql: string
@@ -79,10 +79,10 @@ export class LogExecutor implements FullExecutor {
   param(i: number): string {
     return this.executor.param(i)
   }
-  execute(sql: string, args?: any[], ctx?: any): Promise<number> {
+  execute(sql: string, args?: any[]): Promise<number> {
     const t1 = new Date()
     return this.executor
-      .execute(sql, args, ctx)
+      .execute(sql, args)
       .then((v) => {
         setTimeout(() => {
           if (this.log) {
@@ -113,10 +113,10 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  executeBatch(statements: Statement[], firstSuccess?: boolean, ctx?: any): Promise<number> {
+  executeBatch(statements: Statement[], firstSuccess?: boolean): Promise<number> {
     const t1 = new Date()
     return this.executor
-      .executeBatch(statements, firstSuccess, ctx)
+      .executeBatch(statements, firstSuccess)
       .then((v) => {
         setTimeout(() => {
           if (this.log) {
@@ -147,10 +147,10 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T[]> {
+  query<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]> {
     const t1 = new Date()
     return this.executor
-      .query<T>(sql, args, m, bools, ctx)
+      .query<T>(sql, args, m, bools)
       .then((v) => {
         setTimeout(() => {
           if (this.log) {
@@ -186,10 +186,10 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[], ctx?: any): Promise<T | null> {
+  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T | null> {
     const t1 = new Date()
     return this.executor
-      .queryOne<T>(sql, args, m, bools, ctx)
+      .queryOne<T>(sql, args, m, bools)
       .then((v) => {
         setTimeout(() => {
           if (this.log) {
@@ -223,10 +223,10 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  executeScalar<T>(sql: string, args?: any[], ctx?: any): Promise<T> {
+  executeScalar<T>(sql: string, args?: any[]): Promise<T> {
     const t1 = new Date()
     return this.executor
-      .executeScalar<T>(sql, args, ctx)
+      .executeScalar<T>(sql, args)
       .then((v) => {
         setTimeout(() => {
           if (this.log) {
@@ -260,7 +260,7 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  count(sql: string, args?: any[], ctx?: any): Promise<number> {
+  count(sql: string, args?: any[]): Promise<number> {
     const t1 = new Date()
     return this.executor
       .count(sql, args)

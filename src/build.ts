@@ -135,14 +135,15 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
     let v = o[k]
     const attr = attrs[k]
     if (attr && !attr.ignored && !attr.noinsert) {
-      if (v == null) { // (v === null || v === undefined) {
+      if (v == null && attr.default !== undefined) {
         v = attr.default
       }
       if (v != null) {
         const field = attr.column ? attr.column : k
         cols.push(field)
-        if (k === ver) {
+        if (attr.version) {
           isVersion = true
+          ver = k
           values.push(`${1}`)
         } else {
           if (v === "") {
@@ -150,25 +151,17 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
           } else if (typeof v === "number") {
             values.push(toString(v))
           } else if (typeof v === "boolean") {
-            if (attr.true === undefined) {
-              if (v === true) {
-                values.push(`true`)
-              } else {
-                values.push(`false`)
-              }
+            const p = buildParam(i++)
+            values.push(p)
+            if (v === true) {
+              const v2 = attr.true !== undefined ? attr.true : true
+              args.push(v2)
             } else {
-              const p = buildParam(i++)
-              values.push(p)
-              if (v === true) {
-                const v2 = attr.true ? attr.true : "1"
-                args.push(v2)
-              } else {
-                const v2 = attr.false ? attr.false : "0"
-                args.push(v2)
-              }
+              const v2 = attr.false !== undefined ? attr.false : false
+              args.push(v2)
             }
           } else {
-            if (resource.ignoreDatetime && typeof v === "string" && attr.type === "datetime") {
+            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
               values.push(`'${v}'`)
             } else {
               const p = buildParam(i++)
@@ -180,11 +173,13 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
       }
     }
   }
-  if (!isVersion && ver && ver.length > 0) {
+  if (cols.length > 0 && ver && isVersion === false) {
     const attr = attrs[ver]
-    const field = attr.column ? attr.column : ver
-    cols.push(field)
-    values.push(`${1}`)
+    if (attr) {
+      const field = attr.column ? attr.column : ver
+      cols.push(field)
+      values.push(`${1}`)
+    }
   }
   if (cols.length === 0) {
     return { query: "", params: args }
@@ -241,7 +236,7 @@ export function buildToInsertBatch<T>(
         const attr = attrs[k]
         if (attr && !attr.ignored && !attr.noinsert) {
           let v = (obj as any)[k]
-          if (v == null) {// (v === null || v === undefined) {
+          if (v == null && attr.default !== undefined) {
             v = attr.default
           }
           // let x: string;
@@ -254,25 +249,17 @@ export function buildToInsertBatch<T>(
           } else if (typeof v === "number") {
             values.push(toString(v))
           } else if (typeof v === "boolean") {
-            if (attr.true === undefined) {
-              if (v === true) {
-                values.push(`true`)
-              } else {
-                values.push(`false`)
-              }
+            const p = buildParam(i++)
+            values.push(p)
+            if (v === true) {
+              const v2 = attr.true !== undefined ? attr.true : true
+              args.push(v2)
             } else {
-              const p = buildParam(i++)
-              values.push(p)
-              if (v === true) {
-                const v2 = attr.true ? attr.true : "1"
-                args.push(v2)
-              } else {
-                const v2 = attr.false ? attr.false : "0"
-                args.push(v2)
-              }
+              const v2 = attr.false !== undefined ? attr.false : false
+              args.push(v2)
             }
           } else {
-            if (resource.ignoreDatetime && typeof v === "string" && attr.type === "datetime") {
+            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
               values.push(`'${v}'`)
             } else {
               const p = buildParam(i++)
@@ -315,22 +302,14 @@ export function buildToInsertBatch<T>(
               } else if (typeof v === "number") {
                 values.push(toString(v))
               } else if (typeof v === "boolean") {
-                if (attr.true === undefined) {
-                  if (v === true) {
-                    values.push(`true`)
-                  } else {
-                    values.push(`false`)
-                  }
+                const p = buildOracleParam(i++)
+                values.push(p)
+                if (v === true) {
+                  const v2 = attr.true !== undefined ? attr.true : "1"
+                  args.push(v2)
                 } else {
-                  const p = buildOracleParam(i++)
-                  values.push(p)
-                  if (v === true) {
-                    const v2 = attr.true ? attr.true : "1"
-                    args.push(v2)
-                  } else {
-                    const v2 = attr.false ? attr.false : "0"
-                    args.push(v2)
-                  }
+                  const v2 = attr.false !== undefined ? attr.false : "0"
+                  args.push(v2)
                 }
               } else {
                 const p = buildOracleParam(i++)
@@ -343,9 +322,11 @@ export function buildToInsertBatch<T>(
       }
       if (!isVersion && ver && ver.length > 0) {
         const attr = attrs[ver]
-        const field = attr.column ? attr.column : ver
-        cols.push(field)
-        values.push(`${1}`)
+        if (attr) {
+          const field = attr.column ? attr.column : ver
+          cols.push(field)
+          values.push(`${1}`)
+        }
       }
       if (cols.length === 0) {
         if (notSkipInvalid) {
@@ -369,23 +350,36 @@ export function update<T>(
   table: string,
   attrs: Attributes,
   buildParam: (i: number) => string,
+  pks?: Attribute[],
   ver?: string,
   i?: number,
 ): Promise<number> {
-  const stm = buildToUpdate(obj, table, attrs, buildParam, ver, i)
+  const stm = buildToUpdate(obj, table, attrs, buildParam, pks, ver, i)
   if (!stm.query) {
     return Promise.resolve(0)
   } else {
     return exec(stm.query, stm.params)
   }
 }
-export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, buildParam: (i: number) => string, ver?: string, i?: number): Statement {
+export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, buildParam: (i: number) => string, pks?: Attribute[], ver?: string, i?: number): Statement {
   if (!i) {
     i = 1
   }
   const o: any = obj
   const ks = Object.keys(attrs)
-  const pks: Attribute[] = []
+    if (!pks) {
+    pks = []
+    for (const k of ks) {
+      const attr = attrs[k]
+      attr.name = k
+      if (attr.key) {
+        pks.push(attr)
+      }
+      if (attr.version) {
+        ver = k
+      }
+    }
+  }
   const colSet: string[] = []
   const colQuery: string[] = []
   const args: any[] = []
@@ -394,12 +388,10 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
     if (v !== undefined) {
       const attr = attrs[k]
       attr.name = k
-      if (attr && !attr.ignored && k !== ver) {
-        if (attr.key) {
-          pks.push(attr)
-        } else if (!attr.noupdate) {
-          const field = attr.column ? attr.column : k
-          let x: string
+      if (attr && !attr.ignored && !attr.version) {
+        const field = attr.column ? attr.column : k
+        let x: string
+        if (!attr.key && !attr.noupdate) {
           if (v === null) {
             x = "null"
           } else if (v === "") {
@@ -407,24 +399,16 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
           } else if (typeof v === "number") {
             x = toString(v)
           } else if (typeof v === "boolean") {
-            if (attr.true === undefined) {
-              if (v === true) {
-                x = `true`
-              } else {
-                x = `false`
-              }
+            x = buildParam(i++)
+            if (v === true) {
+              const v2 = attr.true !== undefined ? attr.true : true
+              args.push(v2)
             } else {
-              x = buildParam(i++)
-              if (v === true) {
-                const v2 = attr.true ? attr.true : "1"
-                args.push(v2)
-              } else {
-                const v2 = attr.false ? attr.false : "0"
-                args.push(v2)
-              }
+              const v2 = attr.false !== undefined ? attr.false : false
+              args.push(v2)
             }
           } else {
-            if (resource.ignoreDatetime && typeof v === "string" && attr.type === "datetime") {
+            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
               x = `'${v}'`
             } else {
               x = buildParam(i++)
@@ -435,6 +419,9 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
         }
       }
     }
+  }
+  if (colSet.length === 0) {
+    return { query: "", params: args }
   }
   for (const pk of pks) {
     const na = pk.name ? pk.name : ""
@@ -455,10 +442,10 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
         x = buildParam(i++)
         if (typeof v === "boolean") {
           if (v === true) {
-            const v2 = attr.true ? "" + attr.true : "1"
+            const v2 = attr.true !== undefined ? attr.true : true
             args.push(v2)
           } else {
-            const v2 = attr.false ? "" + attr.false : "0"
+            const v2 = attr.false !== undefined ? attr.false : false
             args.push(v2)
           }
         } else {

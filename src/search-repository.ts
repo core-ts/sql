@@ -1,10 +1,9 @@
 import { buildMetadata } from "./build"
 import { Attribute, Attributes, MinDB, Statement, StringMap } from "./metadata"
 import { buildSort, buildQuery, LikeType } from "./query"
-import { buildFromQuery, SearchResult } from "./search"
+import { buildFromQuery, mssql, SearchResult } from "./search"
 
 export const postgres = "postgres"
-export const mssql = "mssql"
 export const mysql = "mysql"
 export const sqlite = "sqlite"
 
@@ -12,6 +11,7 @@ export class SearchRepository<T, S> {
   protected map?: StringMap
   protected bools?: Attribute[]
   protected primaryKeys: Attribute[]
+  protected firstColumn?: string
   protected version?: string
   protected createdAt?: string
   protected updatedAt?: string
@@ -58,6 +58,9 @@ export class SearchRepository<T, S> {
       this.attrs = attrs
       const meta = buildMetadata(attrs)
       this.map = meta.map
+      if (meta.fields && meta.fields.length > 0) {
+        this.firstColumn = meta.fields[0]
+      }
       this.bools = meta.bools
       this.primaryKeys = meta.keys
       this.version = meta.version
@@ -79,7 +82,20 @@ export class SearchRepository<T, S> {
       ipage = page
     }
     const st = this.sort ? this.sort : "sort"
-    const sn = (filter as any)[st] as string
+    let sn = (filter as any)[st] as string
+    if (!sn && this.db.driver === mssql) {
+      if (this.primaryKeys && this.primaryKeys.length > 0) {
+        const keys = this.primaryKeys.map((k) => k.column ? k.column : k.name)
+        if (keys && keys.length > 0) {
+          const sortStr = keys.map((k) => `${k} asc`).join(", ")
+          sn = sortStr
+        }
+      } else if (this.firstColumn) {
+        sn = this.firstColumn
+      } else {
+        throw new Error("Cannot build sort string for mssql")
+      }
+    }
     const likeType = this.db.driver === postgres ? "ilike" : "like"
     const q2 = this.buildQuery(filter, this.db.param, sn, this.buildSort, this.attrs, this.table, fields, this.q, this.excluding, likeType)
     if (!q2) {
