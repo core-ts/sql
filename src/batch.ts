@@ -1,5 +1,5 @@
-import { buildToInsert, buildToInsertBatch, buildToUpdate, buildToUpdateBatch, version } from "./build"
-import { Attributes, Statement } from "./metadata"
+import { buildMetadata, buildToInsert, buildToInsertBatch, buildToUpdate, buildToUpdateBatch, version } from "./build"
+import { Attribute, Attributes, Statement } from "./metadata"
 
 export class SqlInserter<T> {
   version?: string
@@ -39,20 +39,20 @@ export class SqlInserter<T> {
 }
 // tslint:disable-next-line:max-classes-per-file
 export class SqlUpdater<T> {
+  protected keys: Attribute[]
   version?: string
   constructor(
-    public exec: (sql: string, args?: any[]) => Promise<number>,
-    public table: string,
-    public attributes: Attributes,
-    public param: (i: number) => string,
-    public oneIfSuccess?: boolean,
-    public map?: (v: T) => T,
+    protected exec: (sql: string, args?: any[]) => Promise<number>,
+    protected table: string,
+    protected attributes: Attributes,
+    protected param: (i: number) => string,
+    protected oneIfSuccess?: boolean,
+    protected map?: (v: T) => T,
   ) {
     this.write = this.write.bind(this)
-    const x = version(attributes)
-    if (x) {
-      this.version = x.name
-    }
+    const m = buildMetadata(attributes)
+    this.keys = m.keys
+    this.version = m.version
   }
   write(obj: T): Promise<number> {
     if (!obj) {
@@ -62,7 +62,7 @@ export class SqlUpdater<T> {
     if (this.map) {
       obj2 = this.map(obj)
     }
-    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.param, this.version)
+    const stmt = buildToUpdate(obj2, this.table, this.attributes, this.param, this.keys, this.version)
     if (stmt.query.length) {
       if (this.oneIfSuccess) {
         return this.exec(stmt.query, stmt.params).then((ct) => (ct > 0 ? 1 : 0))

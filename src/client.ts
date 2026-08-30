@@ -26,12 +26,12 @@ export interface Proxy {
   queryWithTx?<T>(tx: string, commit: boolean, sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T[]>
   execWithTx?(tx: string, commit: boolean, sql: string, args?: any[]): Promise<number>
   execBatchWithTx?(tx: string, commit: boolean, stmts: Statement[]): Promise<number>
-  insert?<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number>
-  update?<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number>
-  insertBatch?<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string, driver?: string): Promise<number>
+  insert?<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number>
+  update?<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number>
+  insertBatch?<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string): Promise<number>
   updateBatch?<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string, notSkipInvalid?: boolean): Promise<number>
   insertWithTx?<T>(tx: string, commit: boolean, table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number>
-  updateWithTx?<T>(tx: string, commit: boolean, table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number>
+  updateWithTx?<T>(tx: string, commit: boolean, table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number>
   insertBatchWithTx?<T>(
     tx: string,
     commit: boolean,
@@ -151,23 +151,23 @@ export class ProxyClient {
     return this.httpRequest.post<number>(this.url + "/exec-batch?tx=" + tx + sc, d)
   }
 
-  insert<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number> {
-    const s = buildToInsert(obj, table, attrs, buildParam, ver)
+  insert<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number> {
+    const s = buildToInsert(obj, table, attrs, buildParam)
     if (s.query) {
       return this.exec(s.query, s.params)
     } else {
       return Promise.resolve(-1)
     }
   }
-  update<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number> {
-    const s = buildToUpdate(obj, table, attrs, buildParam, ver)
+  update<T>(table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number> {
+    const s = buildToUpdate(obj, table, attrs, buildParam)
     if (s.query) {
       return this.exec(s.query, s.params)
     } else {
       return Promise.resolve(-1)
     }
   }
-  insertBatch<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string, driver?: string): Promise<number> {
+  insertBatch<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string): Promise<number> {
     const s = buildToInsertBatch(objs, table, attrs, buildParam)
     if (s.query) {
       return this.exec(s.query, s.params)
@@ -191,8 +191,8 @@ export class ProxyClient {
       return Promise.resolve(-1)
     }
   }
-  updateWithTx<T>(tx: string, commit: boolean, table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string, ver?: string): Promise<number> {
-    const s = buildToUpdate(obj, table, attrs, buildParam, ver)
+  updateWithTx<T>(tx: string, commit: boolean, table: string, attrs: Attributes, obj: T, buildParam: (i: number) => string): Promise<number> {
+    const s = buildToUpdate(obj, table, attrs, buildParam)
     if (s.query) {
       return this.execWithTx(tx, commit, s.query, s.params)
     } else {
