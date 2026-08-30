@@ -37,7 +37,10 @@ export function getField(name: string, map?: Attributes | StringMap): string | u
   }
   const x = map[name]
   if (!x) {
-    return name
+    if (isValidColumn(name)) {
+      return name
+    }
+    return undefined
   }
   if (typeof x === "string") {
     return x
@@ -45,10 +48,6 @@ export function getField(name: string, map?: Attributes | StringMap): string | u
   if (x.column) {
     return x.column
   }
-  if (isValidColumn(name)) {
-    return name
-  }
-  return undefined
 }
 export function isValidColumn(str: string): boolean {
   for (let i = 0; i < str.length; i++) {
@@ -72,6 +71,13 @@ export function buildOracleParam(i: number): string {
 }
 export function buildDollarParam(i: number): string {
   return "$" + i
+}
+
+export function escapeLike(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_")
 }
 export function buildQuery<S>(
   filter: S,
@@ -98,7 +104,7 @@ export function buildQuery<S>(
   if (sq && sq.length > 0) {
     q = s[sq]
     if (typeof q === "string") {
-      q = q.replace(/%/g, "\\%").replace(/_/g, "\\_")
+      q = escapeLike(q)
       if (q === "") {
         q = undefined
       }
@@ -135,14 +141,16 @@ export function buildQuery<S>(
               filters.push(`${field} = ${param(i++)}`)
               args.push(v)
             } else if (attr.operator === "like") {
-              filters.push(`${field} ${like} ${param(i++)}`)
-              args.push("%" + v + "%")
+              const escaped = escapeLike(v)
+              filters.push(`${field} ${like} ${param(i++)} ESCAPE '\\'`)
+              args.push("%" + escaped + "%")
             } else if (attr.operator === "!=" || attr.operator === "<>") {
               filters.push(`${field} ${attr.operator} ${param(i++)}`)
               args.push(v)
             } else {
-              filters.push(`${field} ${like} ${param(i++)}`)
-              args.push(v + "%")
+              const escaped = escapeLike(v)
+              filters.push(`${field} ${like} ${param(i++)} ESCAPE '\\'`)
+              args.push(escaped + "%")
             }
           }
         } else if (typeof v === "number") {
@@ -199,16 +207,16 @@ export function buildQuery<S>(
             }
           } else if (attr.type === "number" || attr.type === "integer") {
             if (isNumberRange(v)) {
-              if (v["max"]) {
+              if (v["max"] != null) {
                 filters.push(`${field} <= ${v["max"]}`)
-              } else if (v["top"]) {
+              } else if (v["top"] != null) {
                 filters.push(`${field} < ${v["top"]}`)
-              } else if (v["upper"]) {
+              } else if (v["upper"] != null) {
                 filters.push(`${field} < ${v["upper"]}`)
               }
-              if (v["min"]) {
+              if (v["min"] != null) {
                 filters.push(`${field} >= ${v["min"]}`)
-              } else if (v["lower"]) {
+              } else if (v["lower"] != null) {
                 filters.push(`${field} > ${v["lower"]}`)
               }
             }

@@ -11,7 +11,7 @@ export class SearchRepository<T, S> {
   protected map?: StringMap
   protected bools?: Attribute[]
   protected primaryKeys: Attribute[]
-  protected firstColumn?: string
+  protected firstField?: string
   protected version?: string
   protected createdAt?: string
   protected updatedAt?: string
@@ -59,7 +59,7 @@ export class SearchRepository<T, S> {
       const meta = buildMetadata(attrs)
       this.map = meta.map
       if (meta.fields && meta.fields.length > 0) {
-        this.firstColumn = meta.fields[0]
+        this.firstField = meta.fields[0]
       }
       this.bools = meta.bools
       this.primaryKeys = meta.keys
@@ -93,8 +93,8 @@ export class SearchRepository<T, S> {
           const sortStr = keys.map((k) => `${k} asc`).join(", ")
           sn = sortStr
         }
-      } else if (this.firstColumn) {
-        sn = this.firstColumn
+      } else if (this.firstField) {
+        sn = this.firstField
       } else {
         throw new Error("Cannot build sort string for mssql")
       }
