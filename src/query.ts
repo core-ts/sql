@@ -18,7 +18,11 @@ export function buildSort(sort?: string, map?: Attributes | StringMap): string {
           field = st.substring(1)
         }
         const sortType = tp === "-" ? " desc" : ""
-        sort2.push(getField(field.trim(), map) + sortType)
+        const column = getField(field.trim(), map)
+        if (column == undefined) {
+          throw new Error(`invalid column for field: ${field}`)
+        }
+        sort2.push(column + sortType)
       }
     }
   }
@@ -27,7 +31,7 @@ export function buildSort(sort?: string, map?: Attributes | StringMap): string {
   }
   return sort2.join(",")
 }
-export function getField(name: string, map?: Attributes | StringMap): string {
+export function getField(name: string, map?: Attributes | StringMap): string | undefined {
   if (!map) {
     return name
   }
@@ -41,7 +45,24 @@ export function getField(name: string, map?: Attributes | StringMap): string {
   if (x.column) {
     return x.column
   }
-  return name
+  if (isValidColumn(name)) {
+    return name
+  }
+  return undefined
+}
+export function isValidColumn(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const chr = str.charAt(i);
+    if (chr === '.' || chr === '_') {
+      continue;
+    }
+    if (!(chr >= 'a' && chr <= 'z'
+      || chr >= 'A' && chr <= 'Z'
+      || chr >= '0' && chr <= '9')) {
+      return false;
+    }
+  }
+  return true;
 }
 export function buildMsSQLParam(i: number): string {
   return "@" + i
