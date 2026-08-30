@@ -4,15 +4,10 @@ export interface SearchResult<T> {
   list: T[]
   total?: number
 }
-export function getOffset(limit: number, page?: number, firstLimit?: number): number {
+export function getOffset(limit: number, page?: number): number {
   const p = page && page > 0 ? page : 1
-  if (firstLimit && firstLimit > 0) {
-    const offset = limit * (p - 2) + firstLimit
-    return offset < 0 ? 0 : offset
-  } else {
-    const offset = limit * (p - 1)
-    return offset < 0 ? 0 : offset
-  }
+  const offset = limit * (p - 1)
+  return offset < 0 ? 0 : offset
 }
 export function buildFromQuery<T>(
   query: <K>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]) => Promise<K[]>,

@@ -98,18 +98,17 @@ export function buildQuery<S>(
   let like = likeType ? likeType : "like"
   // let param: (i: number) => string
   const filters: string[] = []
-  let q: string | undefined
+  let rawQ: string | undefined
   let excluding: string[] | number[] | undefined
   const args: any[] = []
   if (sq && sq.length > 0) {
-    q = s[sq]
-    if (typeof q === "string") {
-      q = escapeLike(q)
-      if (q === "") {
-        q = undefined
+    rawQ = s[sq]
+    if (typeof rawQ === "string") {
+      if (rawQ === "") {
+        rawQ = undefined
       }
     } else {
-      q = undefined
+      rawQ = undefined
     }
   }
   if (strExcluding && strExcluding.length > 0) {
@@ -155,7 +154,14 @@ export function buildQuery<S>(
           }
         } else if (typeof v === "number") {
           const operator = attr.operator ? attr.operator : ">="
-          filters.push(`${field} ${operator} ${v}`)
+          filters.push(`${field} ${operator} ${param(i++)}`)
+          args.push(v)
+        } else if (typeof v === "boolean") {
+          const operator = attr.operator
+          if (operator === "=" || operator === "!=" || operator === "<>") {
+            filters.push(`${field} ${operator} ${param(i++)}`)
+            args.push(v)
+          }
         } else if (v instanceof Date) {
           const operator = attr.operator ? attr.operator : ">="
           filters.push(`${field} ${operator} ${param(i++)}`)
@@ -220,12 +226,6 @@ export function buildQuery<S>(
                 filters.push(`${field} > ${v["lower"]}`)
               }
             }
-          } else if (attr.type === "boolean") {
-            const operator = attr.operator
-            if (operator === "=" || operator === "!=" || operator === "<>") {
-              filters.push(`${field} ${operator} ${param(i++)}`)
-              args.push(v)
-            }
           }
         }
       }
@@ -247,7 +247,7 @@ export function buildQuery<S>(
     }
     filters.push(`${idField} not in (${ps.join(",")})`)
   }
-  if (q && attrs) {
+  if (rawQ && attrs) {
     const qkeys = Object.keys(attrs)
     const qfilters: string[] = []
     for (const field of qkeys) {
@@ -256,13 +256,15 @@ export function buildQuery<S>(
         const column = attr.column ? attr.column : field
         if (attr.operator === "=") {
           qfilters.push(`${column} = ${param(i++)}`)
-          args.push(q)
+          args.push(rawQ)
         } else if (attr.operator === "like") {
+          const escaped = escapeLike(rawQ)
           qfilters.push(`${column} ${like} ${param(i++)}`)
-          args.push("%" + q + "%")
+          args.push("%" + escaped + "%")
         } else {
+          const escaped = escapeLike(rawQ)
           qfilters.push(`${column} ${like} ${param(i++)}`)
-          args.push(q + "%")
+          args.push(escaped + "%")
         }
       }
     }
@@ -308,29 +310,6 @@ export function buildFieldsByAttributes(attrs: Attributes, fields?: string[]): s
     return "*"
   } else {
     return cols.join(",")
-  }
-}
-export function isEmpty(s: string): boolean {
-  return !(s && s.length > 0)
-}
-export function buildQ(field: string, q: string, match?: string): any {
-  const o: any = {}
-  if (match === "equal") {
-    o[field] = q
-  } else if (match === "prefix") {
-    o[field] = new RegExp(`^${q}`)
-  } else {
-    o[field] = new RegExp(`\\w*${q}\\w*`)
-  }
-  return o
-}
-export function buildMatch(v: string, match: string): string | RegExp {
-  if (match === "equal") {
-    return v
-  } else if (match === "prefix") {
-    return new RegExp(`^${v}`)
-  } else {
-    return new RegExp(`\\w*${v}\\w*`)
   }
 }
 export function isDateRange<T>(obj: T): boolean {
