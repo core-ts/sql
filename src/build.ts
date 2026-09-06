@@ -1,10 +1,5 @@
 import { Attribute, Attributes, Statement, StringMap } from "./metadata"
 
-// tslint:disable-next-line:class-name
-export class resource {
-  static string?: boolean
-  static ignoreDatetime?: boolean
-}
 export function params(length: number, p: (i: number) => string, from?: number): string[] {
   if (from == null) { // (from === null || from === undefined) {
     from = 0
@@ -161,13 +156,8 @@ export function buildToInsert<T>(obj: T, table: string, attrs: Attributes, build
               args.push(v2)
             }
           } else {
-            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
-              values.push(`'${v}'`)
-            } else {
-              const p = buildParam(i++)
-              values.push(p)
-              args.push(v)
-            }
+            values.push(buildParam(i++))
+            args.push(v)
           }
         }
       }
@@ -259,13 +249,8 @@ export function buildToInsertBatch<T>(
               args.push(v2)
             }
           } else {
-            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
-              values.push(`'${v}'`)
-            } else {
-              const p = buildParam(i++)
-              values.push(p)
-              args.push(v)
-            }
+            values.push(buildParam(i++))
+            args.push(v)
           }
         }
       }
@@ -408,12 +393,8 @@ export function buildToUpdate<T>(obj: T, table: string, attrs: Attributes, build
               args.push(v2)
             }
           } else {
-            if (typeof v === "string" && attr.type === "datetime" && resource.ignoreDatetime) {
-              x = `'${v}'`
-            } else {
-              x = buildParam(i++)
-              args.push(v)
-            }
+            x = buildParam(i++)
+            args.push(v)
           }
           colSet.push(`${field}=${x}`)
         }
