@@ -479,9 +479,11 @@ export function updateBatch<T>(
   table: string,
   attrs: Attributes,
   buildParam: (i: number) => string,
+  pks?: Attribute[],
+  ver?: string,
   notSkipInvalid?: boolean,
 ): Promise<number> {
-  const stmts = buildToUpdateBatch(objs, table, attrs, buildParam, notSkipInvalid)
+  const stmts = buildToUpdateBatch(objs, table, attrs, buildParam, pks, ver, notSkipInvalid)
   if (stmts.length === 0) {
     return Promise.resolve(0)
   } else {
@@ -493,112 +495,33 @@ export function buildToUpdateBatch<T>(
   table: string,
   attrs: Attributes,
   buildParam: (i: number) => string,
+  pks?: Attribute[],
+  ver?: string,
   notSkipInvalid?: boolean,
 ): Statement[] {
   const sts: Statement[] = []
-  const meta = buildMetadata(attrs)
-  if (!meta.keys || meta.keys.length === 0) {
-    return sts
+  if (!pks) {
+    pks = []
+    const ks = Object.keys(attrs)
+    for (const k of ks) {
+      const attr = attrs[k]
+      attr.name = k
+      if (attr.key) {
+        pks.push(attr)
+      }
+      if (attr.version) {
+        ver = k
+      }
+    }
   }
   for (const obj of objs) {
-    const o: any = obj
-    let i = 1
-    const ks = Object.keys(o)
-    const colSet: string[] = []
-    const colQuery: string[] = []
-    const args: any[] = []
-    for (const k of ks) {
-      const v = o[k]
-      if (v !== undefined) {
-        const attr = attrs[k]
-        attr.name = k
-        if (attr && !attr.ignored && !attr.key && !attr.version && !attr.noupdate) {
-          const field = attr.column ? attr.column : k
-          let x: string
-          if (v === null) {
-            x = "null"
-          } else if (v === "") {
-            x = `''`
-          } else if (typeof v === "number") {
-            x = toString(v)
-          } else if (typeof v === "boolean") {
-            if (attr.true === undefined) {
-              if (v === true) {
-                x = `true`
-              } else {
-                x = `false`
-              }
-            } else {
-              x = buildParam(i++)
-              if (v === true) {
-                const v2 = attr.true ? attr.true : "1"
-                args.push(v2)
-              } else {
-                const v2 = attr.false ? attr.false : "0"
-                args.push(v2)
-              }
-            }
-          } else {
-            x = buildParam(i++)
-            args.push(v)
-          }
-          colSet.push(`${field}=${x}`)
-        }
-      }
-    }
-    let valid = true
-    for (const pk of meta.keys) {
-      const na = pk.name ? pk.name : ""
-      const v = o[na]
-      if (v == null) { // (v === null || v === undefined) {
-        valid = false
-      } else {
-        const attr = attrs[na]
-        const field = attr.column ? attr.column : pk.name
-        let x: string
-        if (v === null) {
-          x = "null"
-        } else if (v === "") {
-          x = `''`
-        } else if (typeof v === "number") {
-          x = toString(v)
-        } else {
-          x = buildParam(i++)
-          if (typeof v === "boolean") {
-            if (v === true) {
-              const v2 = attr.true ? "" + attr.true : "1"
-              args.push(v2)
-            } else {
-              const v2 = attr.false ? "" + attr.false : "0"
-              args.push(v2)
-            }
-          } else {
-            args.push(v)
-          }
-        }
-        colQuery.push(`${field}=${x}`)
-      }
-    }
-    if (!valid || colSet.length === 0 || colQuery.length === 0) {
+    const smt = buildToUpdate(obj, table, attrs, buildParam, pks, ver)
+    if (!smt.query) {
       if (notSkipInvalid) {
         return sts
       }
     } else {
-      const ver = meta.version
-      if (ver && ver.length > 0) {
-        const v = o[ver]
-        if (typeof v === "number" && !isNaN(v)) {
-          const attr = attrs[ver]
-          if (attr) {
-            const field = attr.column ? attr.column : ver
-            colSet.push(`${field}=${1 + v}`)
-            colQuery.push(`${field}=${v}`)
-          }
-        }
-      }
-      const query = `update ${table} set ${colSet.join(",")} where ${colQuery.join(" and ")}`
-      const stm: Statement = { query, params: args }
-      sts.push(stm)
+      sts.push(smt)
     }
   }
   return sts

@@ -117,7 +117,8 @@ export class SqlBatchInserter<T> {
 }
 // tslint:disable-next-line:max-classes-per-file
 export class SqlBatchUpdater<T> {
-  version?: string
+  protected keys: Attribute[]
+  protected version?: string
   constructor(
     public execBatch: (statements: Statement[]) => Promise<number>,
     public table: string,
@@ -128,10 +129,9 @@ export class SqlBatchUpdater<T> {
     public map?: (v: T) => T,
   ) {
     this.write = this.write.bind(this)
-    const x = version(attributes)
-    if (x) {
-      this.version = x.name
-    }
+    const m = buildMetadata(attributes)
+    this.keys = m.keys
+    this.version = m.version
   }
   write(objs: T[]): Promise<number> {
     if (!objs || objs.length === 0) {
@@ -145,7 +145,7 @@ export class SqlBatchUpdater<T> {
         list.push(obj2)
       }
     }
-    const stmts = buildToUpdateBatch(list, this.table, this.attributes, this.param, this.notSkipInvalid)
+    const stmts = buildToUpdateBatch(list, this.table, this.attributes, this.param, this.keys, this.version, this.notSkipInvalid)
     if (stmts && stmts.length > 0) {
       if (this.oneIfSuccess) {
         return this.execBatch(stmts).then((ct) => stmts.length)
