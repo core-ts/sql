@@ -153,20 +153,19 @@ export class SqlWriter<T> {
       obj2[this.updatedAt] = new Date()
     }
     const stmt = buildToInsert(obj2, this.table, this.attributes, this.db.param, this.version)
-    if (stmt.query) {
-      const db = tx ? tx: this.db
-      return db.execute(stmt.query, stmt.params).catch((err) => {
-        if (err && err.error === "duplicate") {
-          return 0
-        } else {
-          throw err
-        }
-      })
-    } else {
-      return Promise.resolve(-1)
+    if (!stmt.query) {
+      throw new Error("cannot build insert query")
     }
+    const db = tx ? tx: this.db
+    return db.execute(stmt.query, stmt.params).catch((err) => {
+      if (err && err.error === "duplicate") {
+        return 0
+      } else {
+        throw err
+      }
+    })
   }
-  update(obj: T, tx?: Transaction): Promise<number> {
+  async update(obj: T, tx?: Transaction): Promise<number> {
     let obj2: any = obj
     if (this.toDB) {
       obj2 = this.toDB(obj)
@@ -175,11 +174,29 @@ export class SqlWriter<T> {
       obj2[this.updatedAt] = new Date()
     }
     const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.primaryKeys, this.version)
-    if (stmt.query) {
-      const db = tx ? tx: this.db
-      return db.execute(stmt.query, stmt.params)
+    if (!stmt.query) {
+      throw new Error("cannot build update query by id")
+    }
+    const db = tx ? tx: this.db
+    const rowsAffected = await db.execute(stmt.query, stmt.params)
+    if (this.version && rowsAffected === 0) {
+      const selectCols: string[] = []
+      const cols: string[] = []
+      const args: any[] = []
+      let i = 1
+      for (const k of this.primaryKeys) {
+        if (k.name) {
+          const field = k.column ? k.column : k.name
+          selectCols.push(field)
+          cols.push(`${field} = ${this.db.param(i++)}`)
+          args.push((obj as any)[k.name])
+        }
+      }
+      const query = `select ${selectCols.join(",")} from ${this.table} where ${cols.join(" and ")}`
+      const res = await db.query<T>(query, args, this.map, this.bools)
+      return !res || res.length === 0 ? -1 : 0
     } else {
-      return Promise.resolve(-1)
+      return rowsAffected
     }
   }
   patch(obj: Partial<T>, tx?: Transaction): Promise<number> {
@@ -291,20 +308,19 @@ export class SqlSearchWriter<T, S> extends SearchRepository<T, S> {
       obj2[this.updatedAt] = new Date()
     }
     const stmt = buildToInsert(obj2, this.table, this.attributes, this.db.param, this.version)
-    if (stmt.query) {
-      const db = tx ? tx: this.db
-      return db.execute(stmt.query, stmt.params).catch((err) => {
-        if (err && err.error === "duplicate") {
-          return 0
-        } else {
-          throw err
-        }
-      })
-    } else {
-      return Promise.resolve(-1)
+    if (!stmt.query) {
+      throw new Error("cannot build insert query")
     }
+    const db = tx ? tx: this.db
+    return db.execute(stmt.query, stmt.params).catch((err) => {
+      if (err && err.error === "duplicate") {
+        return 0
+      } else {
+        throw err
+      }
+    })
   }
-  update(obj: T, tx?: Transaction): Promise<number> {
+  async update(obj: T, tx?: Transaction): Promise<number> {
     let obj2: any = obj
     if (this.toDB) {
       obj2 = this.toDB(obj)
@@ -313,11 +329,29 @@ export class SqlSearchWriter<T, S> extends SearchRepository<T, S> {
       obj2[this.updatedAt] = new Date()
     }
     const stmt = buildToUpdate(obj2, this.table, this.attributes, this.db.param, this.primaryKeys, this.version)
-    if (stmt.query) {
-      const db = tx ? tx: this.db
-      return db.execute(stmt.query, stmt.params)
+    if (!stmt.query) {
+      throw new Error("cannot build update query by id")
+    }
+    const db = tx ? tx: this.db
+    const rowsAffected = await db.execute(stmt.query, stmt.params)
+    if (this.version && rowsAffected === 0) {
+      const selectCols: string[] = []
+      const cols: string[] = []
+      const args: any[] = []
+      let i = 1
+      for (const k of this.primaryKeys) {
+        if (k.name) {
+          const field = k.column ? k.column : k.name
+          selectCols.push(field)
+          cols.push(`${field} = ${this.db.param(i++)}`)
+          args.push((obj as any)[k.name])
+        }
+      }
+      const query = `select ${selectCols.join(",")} from ${this.table} where ${cols.join(" and ")}`
+      const res = await db.query<T>(query, args, this.map, this.bools)
+      return !res || res.length === 0 ? -1 : 0
     } else {
-      return Promise.resolve(-1)
+      return rowsAffected
     }
   }
   patch(obj: Partial<T>, tx?: Transaction): Promise<number> {
