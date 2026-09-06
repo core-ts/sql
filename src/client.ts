@@ -176,7 +176,7 @@ export class ProxyClient {
     }
   }
   updateBatch<T>(table: string, attrs: Attributes, objs: T[], buildParam: (i: number) => string, notSkipInvalid?: boolean): Promise<number> {
-    const s = buildToUpdateBatch(objs, table, attrs, buildParam, notSkipInvalid)
+    const s = buildToUpdateBatch(objs, table, attrs, buildParam, undefined, undefined, notSkipInvalid)
     if (s && s.length > 0) {
       return this.execBatch(s)
     } else {
@@ -224,7 +224,7 @@ export class ProxyClient {
     buildParam: (i: number) => string,
     notSkipInvalid?: boolean,
   ): Promise<number> {
-    const s = buildToUpdateBatch(objs, table, attrs, buildParam, notSkipInvalid)
+    const s = buildToUpdateBatch(objs, table, attrs, buildParam, undefined, undefined, notSkipInvalid)
     if (s && s.length > 0) {
       return this.execBatchWithTx(tx, commit, s)
     } else {
