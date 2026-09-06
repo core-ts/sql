@@ -518,43 +518,6 @@ export function version(attrs: Attributes): Attribute | undefined {
   }
   return undefined
 }
-export function key(attrs: Attributes): Attribute | undefined {
-  const ks = Object.keys(attrs)
-  for (const k of ks) {
-    const attr = attrs[k]
-    attr.name = k
-    if (attr.key) {
-      return attr
-    }
-  }
-  return undefined
-}
-export function keys(attrs: Attributes): Attribute[] {
-  const ks = Object.keys(attrs)
-  const ats: Attribute[] = []
-  for (const k of ks) {
-    const attr = attrs[k]
-    attr.name = k
-    if (attr.key) {
-      ats.push(attr)
-    }
-  }
-  return ats
-}
-export function buildMap(attrs: Attributes): StringMap {
-  const mp: StringMap = {}
-  const ks = Object.keys(attrs)
-  for (const k of ks) {
-    const attr = attrs[k]
-    attr.name = k
-    const field = attr.column ? attr.column : k
-    const s = field.toLowerCase()
-    if (s !== k) {
-      mp[s] = k
-    }
-  }
-  return mp
-}
 export interface Metadata {
   keys: Attribute[]
   bools?: Attribute[]
@@ -614,23 +577,6 @@ export function attributes(attrs: string[], isKey?: boolean) {
     ks.push(a)
   }
   return ks
-}
-export function param(i: number): string {
-  return "?"
-}
-export function setValue<T, V>(obj: T, path: string, value: V): void {
-  const paths = path.split(".")
-  let o: any = obj
-  for (let i = 0; i < paths.length - 1; i++) {
-    const p = paths[i]
-    if (p in o) {
-      o = o[p]
-    } else {
-      o[p] = {}
-      o = o[p]
-    }
-  }
-  o[paths[paths.length - 1]] = value
 }
 export function toString(v: number): string {
   if (v === v && v !== Infinity && v !== -Infinity) {
