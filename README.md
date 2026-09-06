@@ -1,3 +1,2090 @@
+# SQL Repository
+
+A lightweight TypeScript SQL repository library for building CRUD operations, dynamic queries, filtering, sorting, and pagination on top of database-specific executors.
+
+The library separates SQL construction from database drivers. Database implementations provide an `Executor`/`MinDB` interface, while repositories provide a consistent API for application code.
+
+## Features
+
+* TypeScript-first repository API
+* Generic CRUD repository
+* Dynamic filtering and search
+* Multiple comparison operators
+* `IN` / array filtering
+* Numeric and date ranges
+* Global text search with `q`
+* Configurable sorting
+* Field selection
+* Pagination
+* Total-count queries
+* Oracle/MSSQL paging support
+* Optimistic locking through a version field
+* Automatic `createdAt` / `updatedAt` handling
+* Batch insert and update SQL generation
+* PostgreSQL, MySQL, MSSQL, and Oracle-oriented SQL generation
+* Database-independent executor abstraction
+
+## Installation
+
+```bash
+npm install <package-name>
+```
+
+## Basic Concepts
+
+The library uses metadata to describe how a TypeScript entity maps to a SQL table.
+
+A simplified definition looks like:
+
+```ts
+const attrs = {
+  id: {
+    column: "id",
+    key: true,
+    type: "number"
+  },
+
+  name: {
+    column: "name",
+    type: "string"
+  },
+
+  age: {
+    column: "age",
+    type: "number"
+  },
+
+  version: {
+    column: "version",
+    type: "number",
+    version: true
+  },
+
+  createdAt: {
+    column: "created_at",
+    type: "date",
+    createdAt: true
+  },
+
+  updatedAt: {
+    column: "updated_at",
+    type: "date",
+    updatedAt: true
+  }
+}
+```
+
+The metadata is used by the SQL builders and repositories to determine:
+
+* primary keys
+* database columns
+* insertable fields
+* updatable fields
+* version fields
+* timestamp fields
+* boolean mappings
+* defaults
+* ignored fields
+
+---
+
+## Database Abstraction
+
+The repository does not depend directly on a particular database driver.
+
+A database implementation exposes an executor similar to:
+
+```ts
+export interface Executor {
+  driver: string
+
+  param(i: number): string
+
+  execute(sql: string, args?: any[], ctx?: any): Promise<number>
+
+  executeBatch(
+    statements: Statement[],
+    requireFirstAffected?: boolean,
+    ctx?: any
+  ): Promise<number>
+
+  query<T>(sql: string, args?: any[], ctx?: any): Promise<T[]>
+
+  queryOne<T>(sql: string, args?: any[], ctx?: any): Promise<T | undefined>
+
+  executeScalar<T>(
+    sql: string,
+    args?: any[],
+    ctx?: any
+  ): Promise<T>
+
+  count(sql: string, args?: any[], ctx?: any): Promise<number>
+}
+```
+
+The important part is `param()`.
+
+For example, PostgreSQL can use:
+
+```ts
+param(0) // "$1"
+param(1) // "$2"
+```
+
+while another database can use its own parameter syntax.
+
+This allows the SQL-building layer to remain database-independent.
+
+---
+
+# Repository
+
+The main repository API is:
+
+```ts
+Repository<T, ID, S>
+```
+
+It provides CRUD operations and search capabilities.
+
+Example:
+
+```ts
+interface User {
+  id: number
+  name: string
+  age: number
+  version: number
+  createdAt: Date
+  updatedAt: Date
+}
+```
+
+Create a repository:
+
+```ts
+const repository = new Repository<User, number, UserSearch>(
+  db,
+  "users",
+  attrs
+)
+```
+
+## Create
+
+```ts
+const user = await repository.create({
+  name: "Alice",
+  age: 30
+})
+```
+
+When configured, `createdAt` and other metadata-controlled values are handled automatically.
+
+## Load
+
+```ts
+const user = await repository.load(10)
+```
+
+The repository uses the primary-key metadata to construct the query.
+
+## Exist
+
+```ts
+const exists = await repository.exist(10)
+```
+
+## Update
+
+```ts
+const result = await repository.update({
+  id: 10,
+  name: "Alice Smith",
+  age: 31,
+  version: 3
+})
+```
+
+Update operations can use optimistic locking when a version field is configured.
+
+Conceptually, the generated SQL is similar to:
+
+```sql
+update users
+set name = $1,
+    age = $2,
+    version = 4
+where id = $3
+  and version = $4
+```
+
+The affected-row count can therefore distinguish between a successful update and an optimistic-lock conflict.
+
+## Patch
+
+`patch()` performs a partial update:
+
+```ts
+await repository.patch({
+  id: 10,
+  name: "Alice Smith"
+})
+```
+
+Fields that are not supplied are not updated.
+
+## Delete
+
+```ts
+await repository.delete(10)
+```
+
+---
+
+# Search Repository
+
+Search functionality is provided by the search repository.
+
+```ts
+SearchRepository<T, ID, S>
+```
+
+A search query can contain filtering, sorting, field selection, paging, and a global text query.
+
+Example:
+
+```ts
+const result = await repository.search({
+  name: "Alice",
+  age: {
+    min: 18,
+    max: 40
+  },
+  sn: "-createdAt",
+  page: 1,
+  limit: 20
+})
+```
+
+A typical result contains:
+
+```ts
+{
+  data: [...],
+  total: 123
+}
+```
+
+---
+
+# Filtering
+
+Simple values are translated into equality conditions.
+
+```ts
+{
+  status: "active"
+}
+```
+
+produces a condition conceptually equivalent to:
+
+```sql
+status = ?
+```
+
+Values are passed as query parameters rather than directly embedded into SQL.
+
+## Arrays
+
+An array can be used to generate an `IN` condition:
+
+```ts
+{
+  status: ["active", "pending"]
+}
+```
+
+Conceptually:
+
+```sql
+status in (?, ?)
+```
+
+## Null
+
+`null` can be used for null comparisons.
+
+## Operators
+
+The query builder supports operator-style filter objects for conditions such as:
+
+```text
+eq
+ne
+gt
+gte
+lt
+lte
+like
+```
+
+The exact operator representation is determined by the query API exposed by the package.
+
+---
+
+# Numeric Ranges
+
+Numeric values can be expressed as ranges:
+
+```ts
+{
+  age: {
+    min: 18,
+    max: 40
+  }
+}
+```
+
+which is translated conceptually into:
+
+```sql
+age >= ?
+and age <= ?
+```
+
+A single bound can also be used:
+
+```ts
+{
+  age: {
+    min: 18
+  }
+}
+```
+
+or:
+
+```ts
+{
+  age: {
+    max: 40
+  }
+}
+```
+
+---
+
+# Date Ranges
+
+Date fields support the same range-oriented filtering:
+
+```ts
+{
+  createdAt: {
+    min: new Date("2026-01-01"),
+    max: new Date("2026-12-31")
+  }
+}
+```
+
+The resulting query uses parameterized date values.
+
+---
+
+# Global Text Search
+
+A `q` value can be used for text search across configured searchable fields.
+
+Example:
+
+```ts
+{
+  q: "alice"
+}
+```
+
+The query builder creates a group of `LIKE`/case-insensitive `LIKE` predicates depending on the database driver.
+
+For example:
+
+```sql
+where name like ?
+   or email like ?
+```
+
+PostgreSQL can use `ILIKE` for case-insensitive matching.
+
+---
+
+# Sorting
+
+Sorting is controlled by the `sn` search parameter.
+
+Ascending:
+
+```ts
+{
+  sn: "name"
+}
+```
+
+Descending:
+
+```ts
+{
+  sn: "-createdAt"
+}
+```
+
+Multiple fields:
+
+```ts
+{
+  sn: "name,-createdAt"
+}
+```
+
+The query builder validates sort expressions before inserting them into SQL.
+
+For databases that require deterministic ordering for paging, such as MSSQL, the repository can fall back to primary-key ordering when necessary.
+
+---
+
+# Field Selection
+
+Search queries can restrict the returned fields.
+
+For example:
+
+```ts
+{
+  fields: ["id", "name", "email"]
+}
+```
+
+The SQL projection is built from those fields rather than always returning the entire row.
+
+---
+
+# Pagination
+
+Search supports offset-based pagination.
+
+Example:
+
+```ts
+{
+  page: 2,
+  limit: 20
+}
+```
+
+Conceptually:
+
+```text
+offset = (page - 1) * limit
+```
+
+For databases supporting standard `OFFSET` / `LIMIT`, the query is generated accordingly.
+
+Oracle and MSSQL use database-specific paging syntax.
+
+---
+
+# Count Queries
+
+A paginated search can also return the total number of matching records.
+
+Conceptually, the library executes:
+
+```sql
+select ...
+```
+
+for the page data and a corresponding count query for the total.
+
+This allows applications to implement:
+
+* page numbers
+* total result counts
+* pagination controls
+
+---
+
+# SQL Builders
+
+The package also exposes lower-level SQL builder functions for applications that do not need the repository abstraction.
+
+These include builders for:
+
+```text
+SELECT
+EXIST
+INSERT
+BATCH INSERT
+UPDATE
+BATCH UPDATE
+DELETE
+```
+
+This can be useful when application code already has its own service/repository layer.
+
+For example:
+
+```ts
+const statement = buildToInsert(
+  table,
+  attrs,
+  object,
+  db.param.bind(db)
+)
+```
+
+The result contains SQL and its parameter values.
+
+---
+
+# Batch Operations
+
+Batch SQL builders can generate multiple rows/statements efficiently.
+
+Example:
+
+```ts
+const statements = buildToInsertBatch(
+  table,
+  attrs,
+  objects,
+  buildParam
+)
+```
+
+Batch update functionality is also provided.
+
+The actual execution strategy is delegated to the database executor:
+
+```ts
+await db.executeBatch(statements)
+```
+
+This keeps batching separate from database-specific connection and transaction handling.
+
+---
+
+# Optimistic Locking
+
+A field marked with:
+
+```ts
+{
+  version: true
+}
+```
+
+is treated as a version field.
+
+During an update, the expected version is included in the `WHERE` clause and the version is incremented.
+
+Example:
+
+```text
+Current database version: 3
+Requested version:        3
+New version:              4
+```
+
+The generated SQL is conceptually:
+
+```sql
+update users
+set name = ?,
+    version = 4
+where id = ?
+  and version = 3
+```
+
+If another transaction has already changed the record to version `4`, the update affects zero rows.
+
+This provides optimistic concurrency control without requiring a database lock.
+
+---
+
+# Metadata Attributes
+
+An attribute can contain information such as:
+
+```ts
+interface Attribute {
+  name?: string
+  column?: string
+  type?: string
+  default?: any
+
+  key?: boolean
+  noinsert?: boolean
+  noupdate?: boolean
+
+  version?: boolean
+  createdAt?: boolean
+  updatedAt?: boolean
+
+  ignored?: boolean
+
+  true?: any
+  false?: any
+}
+```
+
+These flags allow the same entity definition to control SQL generation.
+
+### `key`
+
+Marks a primary-key field.
+
+```ts
+{
+  key: true
+}
+```
+
+### `column`
+
+Maps a TypeScript property to a database column.
+
+```ts
+{
+  column: "created_at"
+}
+```
+
+### `noinsert`
+
+Prevents a field from being included in generated INSERT statements.
+
+### `noupdate`
+
+Prevents a field from being included in generated UPDATE statements.
+
+### `version`
+
+Marks the optimistic-lock version column.
+
+### `createdAt`
+
+Marks a field automatically populated when creating an entity.
+
+### `updatedAt`
+
+Marks a field automatically populated when updating an entity.
+
+### `ignored`
+
+Removes a field from SQL generation.
+
+### `default`
+
+Defines an application/database-aware default used during SQL construction.
+
+### `true` / `false`
+
+Allows boolean values to be mapped to database-specific representations.
+
+For example:
+
+```ts
+{
+  true: 1,
+  false: 0
+}
+```
+
+---
+
+# Composite Primary Keys
+
+The SQL builders can work with multiple primary-key fields for operations such as loading, updating, and deleting records.
+
+For example:
+
+```ts
+const attrs = {
+  tenantId: {
+    key: true
+  },
+  id: {
+    key: true
+  }
+}
+```
+
+The generated predicate can conceptually become:
+
+```sql
+where tenant_id = ?
+  and id = ?
+```
+
+Some higher-level search/exclusion behavior is intentionally limited to a single primary-key field.
+
+---
+
+# Database Drivers
+
+The SQL generation layer contains database-specific behavior where necessary.
+
+The executor identifies the active database through:
+
+```ts
+db.driver
+```
+
+This allows the query layer to adapt things such as:
+
+* parameter syntax
+* case-insensitive comparison
+* pagination
+* database-specific SQL
+
+The repository itself does not need to know how connections, pools, transactions, or driver clients are implemented.
+
+---
+
+# Transactions
+
+Transaction management belongs to the database implementation.
+
+A typical application flow is:
+
+```ts
+const tx = await db.beginTransaction()
+
+try {
+  await tx.execute(...)
+  await tx.execute(...)
+
+  await tx.commit()
+} catch (err) {
+  await tx.rollback()
+  throw err
+}
+```
+
+The repository layer can therefore be used independently of the concrete database transaction implementation.
+
+---
+
+# Design Philosophy
+
+This library intentionally separates three responsibilities.
+
+### SQL construction
+
+The SQL builder converts metadata and application values into:
+
+```ts
+{
+  query: string
+  params?: any[]
+}
+```
+
+### Database execution
+
+The executor is responsible for:
+
+* connections
+* pools
+* parameter binding
+* executing SQL
+* transactions
+* database-specific behavior
+
+### Application repository
+
+The repository provides an application-friendly API:
+
+```text
+create
+load
+exist
+update
+patch
+delete
+search
+```
+
+This separation makes it possible to use the same repository code with different SQL database implementations.
+
+---
+
+# Security Considerations
+
+Application values are normally passed through SQL parameters rather than interpolated directly into the generated SQL.
+
+Identifiers such as table names and column names are different: they are SQL syntax rather than parameter values.
+
+Therefore:
+
+* table names should come from trusted application configuration
+* column metadata should come from trusted application configuration
+* user-controlled sort/field expressions should not bypass the library's validation
+* arbitrary SQL fragments should not be accepted as external input
+
+The repository is intended to receive trusted table/metadata definitions and untrusted data values separately.
+
+---
+
+# Limitations
+
+The query builder is designed around SQL generated by this library rather than acting as a complete SQL parser.
+
+In particular, count/paging construction relies on recognizing the structure of generated SQL. Complex hand-written SQL containing nested queries, CTEs, or unusual formatting may require additional handling.
+
+The higher-level `excluding` functionality is also designed around a single primary key.
+
+For complex SQL requirements, applications can use the lower-level `Executor` directly.
+
+---
+
+# Typical Usage
+
+A typical application structure is:
+
+```text
+Application
+    │
+    ▼
+Repository<T>
+    │
+    ├── CRUD
+    ├── Search
+    ├── Filtering
+    └── Paging
+    │
+    ▼
+SQL Builders
+    │
+    ▼
+Executor / Transaction
+    │
+    ▼
+Database Driver
+    │
+    ▼
+SQL Database
+```
+
+The repository contains application-facing behavior while the executor contains database-specific behavior.
+
+---
+
+# API Summary
+
+The main repository operations are:
+
+```ts
+repository.create(...)
+repository.load(...)
+repository.exist(...)
+repository.update(...)
+repository.patch(...)
+repository.delete(...)
+repository.search(...)
+```
+
+The lower-level SQL layer provides builders for:
+
+```text
+select
+exist
+insert
+batch insert
+update
+batch update
+delete
+```
+
+The search layer provides:
+
+```text
+filtering
+sorting
+field selection
+paging
+counting
+global text search
+```
+
+---
+
+# License
+
+MIT
+
+# TypeScript CRUD Repository
+
+A lightweight, database-agnostic CRUD repository for TypeScript applications.
+
+The library provides a small repository abstraction for common database operations while keeping database-specific behavior inside an `Executor`/`Transaction` implementation. It supports primary keys, composite keys, column mapping, boolean conversion, timestamps, optimistic locking, batch inserts, and transactions.
+
+## Features
+
+* Generic `CRUDRepository<T, ID>` API
+* Database-independent executor abstraction
+* Transaction support
+* Create, read, update, patch, delete operations
+* Composite primary keys
+* Property-to-column mapping
+* Boolean value mapping for databases without native boolean types
+* Automatic `createdAt` / `updatedAt` handling
+* Optimistic locking with version fields
+* Batch insert support
+* Custom entity conversion with `toDB` / `fromDB`
+* Configurable SQL parameter placeholders
+
+## Architecture
+
+```text
+Application
+    │
+    ▼
+CRUDRepository<T, ID>
+    │
+    ├── Metadata
+    │
+    ├── SQL Builders
+    │     ├── SELECT
+    │     ├── INSERT
+    │     ├── UPDATE
+    │     └── DELETE
+    │
+    ▼
+Executor / Transaction
+    │
+    ▼
+Database Driver
+```
+
+The repository does not directly depend on a database library. Instead, a database adapter implements the `Executor` and `DB` interfaces.
+
+This makes the repository usable with different database engines and SQL placeholder conventions.
+
+## Installation
+
+Install the package through your package manager:
+
+```bash
+npm install <package-name>
+```
+
+or:
+
+```bash
+yarn add <package-name>
+```
+
+## Basic Usage
+
+Create a database adapter implementing the `DB` interface:
+
+```ts
+interface DB extends Executor {
+  beginTransaction(): Promise<Transaction>
+}
+```
+
+Then create a repository:
+
+```ts
+interface User {
+  id: number
+  name: string
+  active: boolean
+}
+
+const userRepository = new CRUDRepository<User, number>(
+  db,
+  "users",
+  {
+    id: {
+      key: true
+    },
+    name: {},
+    active: {
+      type: "boolean",
+      true: 1,
+      false: 0
+    }
+  }
+)
+```
+
+### Read all records
+
+```ts
+const users = await userRepository.all()
+```
+
+### Load by ID
+
+```ts
+const user = await userRepository.load(123)
+```
+
+### Check existence
+
+```ts
+const exists = await userRepository.exist(123)
+```
+
+### Create
+
+```ts
+const affected = await userRepository.create({
+  id: 123,
+  name: "Alice",
+  active: true
+})
+```
+
+### Update
+
+```ts
+const affected = await userRepository.update({
+  id: 123,
+  name: "Alice Smith",
+  active: true
+})
+```
+
+### Delete
+
+```ts
+const affected = await userRepository.delete(123)
+```
+
+## Metadata
+
+Repository behavior is controlled by attribute metadata.
+
+```ts
+const attributes: Attributes = {
+  id: {
+    key: true
+  },
+
+  name: {
+    column: "user_name"
+  },
+
+  active: {
+    type: "boolean",
+    true: 1,
+    false: 0
+  },
+
+  version: {
+    version: true
+  },
+
+  createdAt: {
+    createdAt: true
+  },
+
+  updatedAt: {
+    updatedAt: true
+  }
+}
+```
+
+### Common attributes
+
+| Attribute   | Description                                 |
+| ----------- | ------------------------------------------- |
+| `key`       | Marks a primary-key field                   |
+| `column`    | Overrides the database column name          |
+| `type`      | Defines special value handling              |
+| `noinsert`  | Excludes the field from INSERT              |
+| `noupdate`  | Excludes the field from UPDATE              |
+| `nopatch`   | Intended to exclude the field from PATCH    |
+| `version`   | Enables optimistic locking                  |
+| `createdAt` | Automatically manages creation time         |
+| `updatedAt` | Automatically manages update time           |
+| `ignored`   | Excludes the field from database operations |
+| `true`      | Database representation of boolean `true`   |
+| `false`     | Database representation of boolean `false`  |
+
+## Column Mapping
+
+Application property names do not have to match database column names.
+
+```ts
+const repository = new CRUDRepository<User, number>(
+  db,
+  "users",
+  {
+    id: {
+      key: true,
+      column: "user_id"
+    },
+
+    name: {
+      column: "user_name"
+    }
+  }
+)
+```
+
+The generated SQL uses the configured column names:
+
+```sql
+insert into users(user_id, user_name)
+values (...)
+```
+
+## Composite Primary Keys
+
+Multiple attributes can be marked as keys:
+
+```ts
+const repository = new CRUDRepository<Order, OrderId>(
+  db,
+  "orders",
+  {
+    tenantId: {
+      key: true,
+      column: "tenant_id"
+    },
+
+    orderId: {
+      key: true,
+      column: "order_id"
+    },
+
+    amount: {}
+  }
+)
+```
+
+A lookup generates a condition similar to:
+
+```sql
+where tenant_id = $1
+  and order_id = $2
+```
+
+## Boolean Mapping
+
+The repository can map JavaScript booleans to database-specific values.
+
+For example:
+
+```ts
+active: {
+  type: "boolean",
+  true: 1,
+  false: 0
+}
+```
+
+produces values such as:
+
+```text
+true  → 1
+false → 0
+```
+
+This is useful for databases or schemas that represent booleans using numeric or string values.
+
+## Transactions
+
+Transactions implement the same `Executor` interface as the database connection.
+
+This allows repository methods to participate in an existing transaction:
+
+```ts
+const tx = await db.beginTransaction()
+
+try {
+  await userRepository.create(user1, tx)
+  await userRepository.update(user2, tx)
+
+  await tx.commit()
+} catch (error) {
+  await tx.rollback()
+  throw error
+}
+```
+
+A transaction can therefore be passed through multiple repository operations without requiring repository-specific transaction logic.
+
+## Optimistic Locking
+
+Mark a field as a version field:
+
+```ts
+version: {
+  version: true
+}
+```
+
+The repository then uses the version in the `UPDATE` condition and increments it when the update succeeds.
+
+Conceptually:
+
+```sql
+update users
+set name = $1,
+    version = $2
+where id = $3
+  and version = $4
+```
+
+This prevents an older entity from overwriting a newer version.
+
+The update result distinguishes different cases:
+
+| Result | Meaning                  |
+| -----: | ------------------------ |
+|  `> 0` | Record updated           |
+|    `0` | Optimistic-lock conflict |
+|   `-1` | Record does not exist    |
+
+This allows callers to distinguish a missing record from a concurrent update.
+
+## Entity Conversion
+
+Repositories can convert entities between application and database representations.
+
+For example:
+
+```ts
+const repository = new CRUDRepository<User, number>(
+  db,
+  "users",
+  attributes,
+  {
+    toDB(user) {
+      return {
+        ...user,
+        name: user.name.trim()
+      }
+    },
+
+    fromDB(row) {
+      return {
+        ...row,
+        name: row.name.trim()
+      }
+    }
+  }
+)
+```
+
+This is useful when database values and application values have different representations.
+
+## Batch Inserts
+
+The SQL builder supports batch insertion:
+
+```ts
+await repository.createBatch(users)
+```
+
+Depending on the database adapter, generated SQL can use the appropriate parameter syntax or dialect-specific batch-insert syntax.
+
+## Executor Interface
+
+The database adapter is responsible for actually communicating with the database.
+
+A simplified interface is:
+
+```ts
+interface Executor {
+  driver: string
+
+  param(index: number): string
+
+  query<T>(
+    sql: string,
+    args?: any[],
+    map?: StringMap,
+    bools?: Attribute[]
+  ): Promise<T[]>
+
+  execute(
+    sql: string,
+    args?: any[]
+  ): Promise<number>
+
+  executeBatch(
+    statements: Statement[],
+    firstSuccess?: boolean
+  ): Promise<number>
+}
+```
+
+### Parameter placeholders
+
+The `param()` function allows each database driver to choose its placeholder format.
+
+For example:
+
+```ts
+param(1) // "$1"
+param(2) // "$2"
+```
+
+or:
+
+```ts
+param(1) // "?"
+param(2) // "?"
+```
+
+The repository therefore does not need to know the parameter syntax of the underlying database.
+
+## Database Adapter Responsibilities
+
+A database adapter should handle:
+
+* Connection management
+* Parameter binding
+* Query execution
+* Transaction lifecycle
+* Database-specific error normalization
+* Conversion of database values into application values
+* Driver-specific SQL behavior
+
+The repository should remain focused on metadata and CRUD behavior.
+
+## SQL Identifier Safety
+
+Table names and column names are inserted into generated SQL rather than passed as parameters.
+
+For example:
+
+```ts
+`select * from ${table}`
+```
+
+SQL parameters normally protect values, not identifiers.
+
+Therefore, table names and column names must come from trusted application configuration.
+
+Do not construct repository metadata from untrusted user input.
+
+## Error Handling
+
+Repository operations generally propagate database errors to the caller.
+
+Database adapters should normalize database-specific errors where possible so the repository does not need to understand vendor-specific error formats.
+
+For example, a database adapter can translate a native duplicate-key error into a common `"duplicate"` error type.
+
+## Design Goals
+
+This project intentionally aims to be smaller than a full ORM.
+
+It provides:
+
+```text
+Metadata
+   +
+SQL generation
+   +
+CRUD repository
+   +
+Database adapter abstraction
+```
+
+while leaving connection pooling, migrations, schema management, query optimization, and database-specific functionality to the surrounding application or database layer.
+
+## Recommended Practices
+
+Keep repository metadata static and application-controlled:
+
+```ts
+const userAttributes = {
+  id: { key: true },
+  name: {}
+}
+```
+
+Reuse the metadata when appropriate, but avoid modifying it at runtime.
+
+Use transactions for operations that must succeed or fail together:
+
+```ts
+const tx = await db.beginTransaction()
+
+try {
+  await repository.create(a, tx)
+  await repository.update(b, tx)
+
+  await tx.commit()
+} catch (error) {
+  await tx.rollback()
+  throw error
+}
+```
+
+For concurrent updates, use a `version` attribute and check the update result.
+
+## Known Limitations / Areas for Improvement
+
+The current implementation has several areas that may be worth addressing in future versions:
+
+* Centralize SQL value parameterization to reduce duplicated logic.
+* Avoid mutating metadata objects during repository initialization.
+* Avoid unexpectedly mutating caller-owned entities when timestamps are assigned.
+* Ensure `nopatch` is honored by `patch()`.
+* Apply `fromDB` consistently to all read paths.
+* Validate that repositories have at least one primary key when operations require one.
+* Make dialect-specific batch behavior explicit instead of using a boolean mode parameter.
+* Normalize database errors in adapters.
+* Prefer parameter binding for values whenever supported by the database driver.
+
+These changes would improve consistency, maintainability, and portability without changing the core repository architecture.
+
+## Project Structure
+
+```text
+src/
+├── build.ts
+├── metadata.ts
+├── repository.ts
+└── index.ts
+```
+
+### `metadata.ts`
+
+Defines:
+
+* `Attribute`
+* `Attributes`
+* `Executor`
+* `Transaction`
+* `DB`
+* Other repository-related types
+
+### `build.ts`
+
+Contains SQL-building functions for:
+
+* SELECT
+* INSERT
+* UPDATE
+* DELETE
+* Batch operations
+* Parameter generation
+* Metadata processing
+
+### `repository.ts`
+
+Implements the high-level:
+
+```ts
+CRUDRepository<T, ID>
+```
+
+API.
+
+### `index.ts`
+
+Exports the public API of the package.
+
+## License
+
+MIT
+
+# search-repository
+
+A lightweight TypeScript search and pagination repository for SQL databases.
+
+`SearchRepository` provides a convenient way to implement common backoffice and administration search screens without writing repetitive SQL for every filter, sort, pagination, and count operation.
+
+The design is intentionally simple:
+
+* Handle the common 80–90% search cases automatically.
+* Keep complex SQL under the developer's control.
+* Support different database drivers through a small DB abstraction.
+* Allow custom `buildQuery` and `buildSort` implementations to be injected into `SearchRepository`.
+
+## Features
+
+* Metadata-driven field and column mapping
+* Automatic `WHERE` clause generation
+* String, number, date, boolean, and array filters
+* `LIKE` / `ILIKE` searches
+* Free-text `q` search
+* `IN` / `NOT IN` filters
+* Numeric and date ranges
+* Configurable sorting
+* Pagination
+* Total-count support
+* Driver-specific parameter placeholders
+* PostgreSQL, MySQL, SQLite, Oracle, MSSQL, and other database drivers through the `MinDB` interface
+* Custom query builder injection
+* Custom sort builder injection
+* Designed for simple, dynamically filtered SQL queries
+
+## Installation
+
+```bash
+npm install search
+```
+
+Replace `search` with the actual package name when publishing.
+
+## Basic Usage
+
+Define the database columns with metadata:
+
+```ts
+const attrs = {
+  id: {
+    column: "id",
+    key: true,
+    type: "number"
+  },
+
+  name: {
+    column: "name",
+    type: "string"
+  },
+
+  status: {
+    column: "status",
+    type: "string"
+  },
+
+  age: {
+    column: "age",
+    type: "number"
+  },
+
+  createdAt: {
+    column: "created_at",
+    type: "date"
+  }
+}
+```
+
+Create a repository:
+
+```ts
+const repository = new SearchRepository(db, attrs)
+```
+
+Then search using a filter object:
+
+```ts
+const result = await repository.search({
+  name: "john",
+  status: "active",
+  age: {
+    min: 18,
+    max: 60
+  }
+})
+```
+
+The result contains the records and the total number of matching records.
+
+```ts
+{
+  list: [...],
+  total: 42
+}
+```
+
+## Search Filters
+
+The default query builder is designed for common search forms.
+
+### String
+
+A string filter uses prefix matching by default:
+
+```ts
+{
+  name: "john"
+}
+```
+
+Conceptually:
+
+```sql
+WHERE name LIKE 'john%'
+```
+
+### String operators
+
+String filters can specify an operator:
+
+```ts
+{
+  name: {
+    value: "john",
+    operator: "like"
+  }
+}
+```
+
+Supported operators include:
+
+```text
+=
+!=
+<>
+like
+```
+
+### Number
+
+Number filters can be used directly:
+
+```ts
+{
+  age: 18
+}
+```
+
+The default numeric behavior is designed for search screens rather than strict equality filtering.
+
+### Number range
+
+```ts
+{
+  age: {
+    min: 18,
+    max: 60
+  }
+}
+```
+
+Conceptually:
+
+```sql
+WHERE age >= 18
+  AND age <= 60
+```
+
+### Date range
+
+```ts
+{
+  createdAt: {
+    startDate: new Date("2026-01-01"),
+    endDate: new Date("2026-12-31")
+  }
+}
+```
+
+The query builder supports multiple date-range forms for applications that use different naming conventions.
+
+### Array / `IN`
+
+```ts
+{
+  status: ["active", "pending"]
+}
+```
+
+Conceptually:
+
+```sql
+WHERE status IN (?, ?)
+```
+
+### Excluding values
+
+The repository supports excluding records by their primary key:
+
+```ts
+repository.search(filter, page, sort, excluding)
+```
+
+`excluding` is intended for entities with a **single primary key**.
+
+Composite primary keys are not supported by this feature.
+
+### Free-text search
+
+The `q` filter can search across fields configured as searchable in the metadata:
+
+```ts
+{
+  q: "john"
+}
+```
+
+This is useful for a search box that searches several fields at once.
+
+## Sorting
+
+Sorting is metadata-aware and can resolve application field names to database columns.
+
+Example:
+
+```ts
+const result = await repository.search(
+  filter,
+  1,
+  "-createdAt,name"
+)
+```
+
+A sort expression can specify ascending or descending order.
+
+The default `buildSort` function is suitable for normal search screens, while applications with special requirements can provide their own implementation.
+
+## Pagination
+
+For relational databases, pagination normally uses a numeric page:
+
+```ts
+await repository.search(filter, 1, "name")
+```
+
+The public API accepts:
+
+```ts
+page?: number | string
+```
+
+This is intentional.
+
+A numeric value represents a normal page number. A string can be used by databases or implementations that use an opaque pagination token instead of a page number.
+
+For example, a Cassandra-based implementation can pass a `nextPageToken` through the same controller-level API.
+
+For relational implementations, a string page value is treated as page 1.
+
+This allows application controllers to use the same search API across different database implementations.
+
+## Database Abstraction
+
+The search package does not depend directly on a particular database client.
+
+The minimal interface is:
+
+```ts
+export interface MinDB {
+  driver?: string
+  param(i: number): string
+  query<T>(sql: string, args?: any[]): Promise<T[]>
+}
+```
+
+A database implementation only needs to provide the required query behavior and parameter syntax.
+
+This allows the same search repository to work with multiple database packages.
+
+For example:
+
+```text
+SearchRepository
+        |
+        +---- PostgreSQL
+        |
+        +---- MySQL
+        |
+        +---- MSSQL
+        |
+        +---- Oracle
+        |
+        +---- SQLite
+        |
+        +---- Custom DB
+```
+
+The `driver` property allows the search implementation to apply database-specific pagination behavior when necessary.
+
+## `SearchRepository`
+
+`SearchRepository` is intentionally extensible.
+
+Its most important extension points are:
+
+```text
+buildQuery
+buildSort
+```
+
+The default implementations handle common search screens. Developers can replace either one when application-specific behavior is required.
+
+Conceptually:
+
+```text
+                 SearchRepository
+                        |
+             +----------+----------+
+             |                     |
+         buildQuery            buildSort
+             |                     |
+        default/custom        default/custom
+             |                     |
+             +----------+----------+
+                        |
+                       SQL
+                        |
+                        DB
+```
+
+This means the repository does not force the application to use the default query language.
+
+## Custom `buildQuery`
+
+For complex business requirements, provide your own query builder.
+
+For example:
+
+```ts
+const repository = new SearchRepository(
+  db,
+  attrs,
+  customBuildQuery
+)
+```
+
+A custom query builder is appropriate when the query requires things such as:
+
+* Complex joins
+* Subqueries
+* CTEs
+* Database-specific SQL
+* Special business rules
+* Advanced aggregation
+* Custom `GROUP BY`
+* Complex `HAVING`
+* Custom expressions
+
+The default `buildQuery` is not intended to be a replacement for handwritten SQL.
+
+The recommended approach is:
+
+```text
+Simple search screen
+        ↓
+Use default buildQuery
+
+Complex query
+        ↓
+Write the SQL/query builder yourself
+        ↓
+Inject buildQuery into SearchRepository
+```
+
+## Custom `buildSort`
+
+Sorting can also be customized independently.
+
+```ts
+const repository = new SearchRepository(
+  db,
+  attrs,
+  buildQuery,
+  buildSort
+)
+```
+
+This is useful when the application needs:
+
+* Database-specific expressions
+* Computed columns
+* Special ordering rules
+* Multi-column business ordering
+* Custom default ordering
+
+## Generated SQL
+
+For a simple search:
+
+```ts
+{
+  name: "john",
+  status: ["active", "pending"],
+  age: {
+    min: 18,
+    max: 60
+  }
+}
+```
+
+the query builder can produce SQL conceptually similar to:
+
+```sql
+SELECT ...
+FROM users
+WHERE name LIKE ?
+  AND status IN (?, ?)
+  AND age >= ?
+  AND age <= ?
+ORDER BY name
+```
+
+Values are passed separately as query parameters rather than being concatenated into SQL.
+
+Parameter placeholders are generated according to the database driver.
+
+For example:
+
+```text
+PostgreSQL:
+$1, $2, $3
+
+MySQL:
+?, ?, ?
+
+MSSQL:
+@p1, @p2, @p3
+```
+
+## Count and Pagination
+
+The repository also handles obtaining the total number of matching records.
+
+For databases where a separate count query is appropriate, the implementation can execute the data query and count query concurrently.
+
+For databases such as Oracle and MSSQL, the implementation can use a window function such as:
+
+```sql
+COUNT(*) OVER()
+```
+
+to obtain the total together with the result rows.
+
+The database-specific behavior is hidden behind the repository API.
+
+## Scope
+
+This package intentionally targets **simple SQL queries generated from search forms**.
+
+It is particularly useful for:
+
+* Admin panels
+* Backoffice applications
+* Management screens
+* Data tables
+* Filterable lists
+* Simple reporting screens
+* REST API list endpoints
+
+It is not intended to be a universal SQL query parser.
+
+For complex SQL, the recommended approach is to write the query yourself and inject the corresponding `buildQuery` implementation.
+
+This keeps the default implementation small and predictable while still allowing complete control when needed.
+
+## Metadata
+
+Metadata describes how application fields map to database fields.
+
+A typical definition looks like:
+
+```ts
+const attrs = {
+  id: {
+    column: "id",
+    key: true,
+    type: "number"
+  },
+
+  name: {
+    column: "user_name",
+    type: "string"
+  },
+
+  active: {
+    column: "active",
+    type: "boolean"
+  }
+}
+```
+
+The metadata can also describe fields used for:
+
+* Primary keys
+* Boolean conversion
+* Versioning
+* Created timestamps
+* Updated timestamps
+* Searchable fields
+* Database column mapping
+
+This allows the same search logic to work with domain-level field names without exposing database naming conventions to callers.
+
+## Design Philosophy
+
+The package follows a simple principle:
+
+> **Make common searches easy, and make complex searches possible.**
+
+The default query builder removes repetitive code for ordinary search forms, while `SearchRepository` provides injection points for developers who need complete control.
+
+This avoids turning the library into a general-purpose SQL parser while still allowing it to support a wide range of real-world applications.
+
+## Limitations
+
+The default builder intentionally focuses on straightforward SQL queries.
+
+Applications should provide their own query builder for complex SQL involving advanced constructs such as:
+
+```text
+JOIN-heavy queries
+Subqueries
+CTEs
+GROUP BY
+HAVING
+UNION
+Complex DISTINCT logic
+Database-specific expressions
+Complex business rules
+```
+
+The `excluding` feature is intended for entities with a single primary key. Composite primary keys are not supported by this feature.
+
+## Recommended Usage
+
+For a typical backoffice screen:
+
+```ts
+const repository = new SearchRepository(db, attrs)
+
+const result = await repository.search(
+  filter,
+  page,
+  sort
+)
+```
+
+For a complex screen:
+
+```ts
+const repository = new SearchRepository(
+  db,
+  attrs,
+  buildMyCustomQuery,
+  buildMyCustomSort
+)
+
+const result = await repository.search(
+  filter,
+  page,
+  sort
+)
+```
+
+This lets the application reuse the repository's pagination, counting, DB abstraction, and result handling without giving up control over SQL generation.
+
+## License
+
+MIT
+
 # sql-core
 
 > **A lightweight SQL persistence framework for TypeScript.**

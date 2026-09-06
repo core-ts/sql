@@ -1,4 +1,3 @@
-import { resource } from "./build"
 import { Attribute, StringMap } from "./metadata"
 
 export * from "./metadata"
@@ -27,6 +26,10 @@ export interface Config {
   idleTimeoutMillis?: number | undefined
 }
 
+// tslint:disable-next-line:class-name
+export class resource {
+  static string?: boolean
+}
 // tslint:disable-next-line:max-classes-per-file
 export class Loader<T> {
   constructor(

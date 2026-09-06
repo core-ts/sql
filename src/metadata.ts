@@ -39,7 +39,6 @@ export interface Attribute {
   q?: boolean
   noinsert?: boolean
   noupdate?: boolean
-  nopatch?: boolean
   version?: boolean
   ignored?: boolean
   true?: string | number
@@ -69,17 +68,4 @@ export interface Transaction extends Executor {
 }
 export interface DB extends Executor {
   beginTransaction(): Promise<Transaction>
-}
-
-export interface FullExecutor extends Executor {
-  queryOne<T>(sql: string, args?: any[], m?: StringMap, bools?: Attribute[]): Promise<T | null>
-  executeScalar<T>(sql: string, args?: any[]): Promise<T>
-  count(sql: string, args?: any[]): Promise<number>
-}
-export interface FullTransaction extends FullExecutor {
-  commit(): Promise<void>
-  rollback(): Promise<void>
-}
-export interface FullDB extends FullExecutor {
-  beginTransaction(): Promise<FullTransaction>
 }
