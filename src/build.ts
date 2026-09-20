@@ -570,6 +570,20 @@ export function buildMetadata(attrs: Attributes): Metadata {
   }
   return m
 }
+export function buildMap(attrs: Attributes): StringMap {
+  const mp: StringMap = {}
+  const ks = Object.keys(attrs)
+  for (const k of ks) {
+    const attr = attrs[k]
+    attr.name = k
+    const field = attr.column ? attr.column : k
+    const s = field.toLowerCase()
+    if (s !== k) {
+      mp[s] = k
+    }
+  }
+  return mp
+}
 export function attributes(attrs: string[], isKey?: boolean) {
   const ks: Attribute[] = []
   for (const s of attrs) {
