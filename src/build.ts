@@ -521,7 +521,7 @@ export function version(attrs: Attributes): Attribute | undefined {
 export interface Metadata {
   keys: Attribute[]
   bools?: Attribute[]
-  map?: StringMap
+  map: StringMap
   version?: string
   fields?: string[]
   updatedAt?: string
@@ -533,8 +533,7 @@ export function buildMetadata(attrs: Attributes): Metadata {
   const ats: Attribute[] = []
   const bools: Attribute[] = []
   const fields: string[] = []
-  let isMap = false
-  const m: Metadata = { keys: ats, fields }
+  const m: Metadata = { keys: ats, fields, map: mp }
   for (const k of ks) {
     const attr = attrs[k]
     attr.name = k
@@ -559,11 +558,7 @@ export function buildMetadata(attrs: Attributes): Metadata {
     const s = field.toLowerCase()
     if (s !== k) {
       mp[s] = k
-      isMap = true
     }
-  }
-  if (isMap) {
-    m.map = mp
   }
   if (bools.length > 0) {
     m.bools = bools
