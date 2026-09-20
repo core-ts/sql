@@ -76,7 +76,7 @@ export class SearchRepository<T, S> {
     this.search = this.search.bind(this)
     this.total = total && total.length > 0 ? total : "total"
   }
-  search(filter: S, limit: number, page?: number | string, fields?: string[]): Promise<SearchResult<T>> {
+  search(filter: S, limit: number, page?: number, fields?: string[]): Promise<SearchResult<T>> {
     let ipage = 0
     if (typeof page === "number" && page > 0) {
       ipage = page
