@@ -45,9 +45,7 @@ export function getField(name: string, map?: Attributes | StringMap): string | u
   if (typeof x === "string") {
     return x
   }
-  if (x.column) {
-    return x.column
-  }
+  return x.column ? x.column : x.name
 }
 export function isValidColumn(str: string): boolean {
   for (let i = 0; i < str.length; i++) {
