@@ -1,6 +1,6 @@
 {
   "name": "sql-core",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "sql",
   "main": "./lib/index.js",
   "types": "./src/index.ts",
