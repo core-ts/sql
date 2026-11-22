@@ -1,5 +1,5 @@
 import { attributes, buildToDelete, buildToInsert, buildToUpdate, exist, buildMetadata, select } from "./build"
-import { Attribute, Attributes, Executor, MinDB, Statement, StringMap, Transaction } from "./metadata"
+import { Attribute, Attributes, DB, Executor, Statement, StringMap, Transaction } from "./metadata"
 import { LikeType } from "./query"
 import { SearchRepository } from "./search-repository"
 
@@ -443,7 +443,7 @@ export const Repository = SqlRepository
 // tslint:disable-next-line:max-classes-per-file
 export class Query<T, ID, S> extends SearchRepository<T, S> {
   constructor(
-    db: MinDB,
+    db: Executor,
     table: string,
     attributes: Attributes,
     buildQ?: (

@@ -10,7 +10,7 @@ export interface AnyMap {
 export class Checker {
   timeout: number
   service: string
-  constructor(public select: (sql: string) => Promise<any[]>, public query: string, service?: string, timeout?: number) {
+  constructor(protected select: (sql: string) => Promise<any[]>, protected query: string, service?: string, timeout?: number) {
     this.timeout = timeout ? timeout : 4200
     this.service = service ? service : "sql"
     this.check = this.check.bind(this)

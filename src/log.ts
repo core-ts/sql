@@ -1,4 +1,4 @@
-import { Attribute, FullDB, FullExecutor, FullTransaction, Statement, StringMap } from "./metadata"
+import { Attribute, DB, Executor, Statement, StringMap, Transaction } from "./metadata"
 
 export interface SimpleMap {
   [key: string]: string | number | boolean | Date
@@ -11,7 +11,7 @@ export interface Logger {
   isDebugEnabled(): boolean
   isInfoEnabled(): boolean
 }
-export function log(db: FullExecutor, isLog: boolean | undefined | null, logger: Logger, q?: string, result?: string, r?: string, duration?: string): FullExecutor {
+export function log(db: Executor, isLog: boolean | undefined | null, logger: Logger, q?: string, result?: string, r?: string, duration?: string): Executor {
   if (!isLog) {
     return db
   }
@@ -27,7 +27,7 @@ export function log(db: FullExecutor, isLog: boolean | undefined | null, logger:
   return new LogExecutor(db, logger.error, logger.info, q, result, r, duration)
 }
 export function useLog(
-  db: FullDB,
+  db: DB,
   isLog: boolean | undefined | null,
   err: ((msg: string, m?: SimpleMap) => void) | undefined,
   lg?: (msg: string, m?: SimpleMap) => void,
@@ -35,7 +35,7 @@ export function useLog(
   result?: string,
   r?: string,
   duration?: string,
-): FullDB {
+): DB {
   if (!isLog) {
     return db
   }
@@ -45,9 +45,9 @@ export function useLog(
   return db
 }
 // tslint:disable-next-line:max-classes-per-file
-export class LogExecutor implements FullExecutor {
+export class LogExecutor implements Executor {
   constructor(
-    protected executor: FullExecutor,
+    protected executor: Executor,
     protected error: (msg: string, m?: SimpleMap) => void,
     lg?: (msg: string, m?: SimpleMap) => void,
     q?: string,
@@ -223,7 +223,7 @@ export class LogExecutor implements FullExecutor {
         throw er
       })
   }
-  executeScalar<T>(sql: string, args?: any[]): Promise<T> {
+  executeScalar<T>(sql: string, args?: any[]): Promise<T | null> {
     const t1 = new Date()
     return this.executor
       .executeScalar<T>(sql, args)
@@ -321,9 +321,9 @@ const getDurationInMilliseconds = (start: [number, number] | undefined) => {
   return (diff[0] * NS_PER_SEC + diff[1]) / NS_TO_MS;
 };
 */
-export class LogTransaction extends LogExecutor implements FullTransaction {
+export class LogTransaction extends LogExecutor implements Transaction {
   constructor(
-    protected tx: FullTransaction,
+    protected tx: Transaction,
     err: (msg: string, m?: SimpleMap) => void,
     lg?: (msg: string, m?: SimpleMap) => void,
     q?: string,
@@ -340,9 +340,9 @@ export class LogTransaction extends LogExecutor implements FullTransaction {
     return this.tx.rollback()
   }
 }
-export class LogDB extends LogExecutor implements FullDB {
+export class LogDB extends LogExecutor implements DB {
   constructor(
-    protected db: FullDB,
+    protected db: DB,
     err: (msg: string, m?: SimpleMap) => void,
     lg?: (msg: string, m?: SimpleMap) => void,
     q?: string,
@@ -352,7 +352,7 @@ export class LogDB extends LogExecutor implements FullDB {
   ) {
     super(db, err, lg, q, result, r, duration)
   }
-  beginTransaction(): Promise<FullTransaction> {
+  beginTransaction(): Promise<Transaction> {
     return this.db.beginTransaction().then(tx => {
       return new LogTransaction(tx, this.error, this.log, this.sql, this.result, this.return, this.duration)
     })

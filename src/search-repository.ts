@@ -1,5 +1,5 @@
 import { buildMetadata } from "./build"
-import { Attribute, Attributes, MinDB, Statement, StringMap } from "./metadata"
+import { Attribute, Attributes, Executor, Statement, StringMap } from "./metadata"
 import { buildSort, buildQuery, LikeType } from "./query"
 import { buildFromQuery, mssql, SearchResult } from "./search"
 
@@ -32,7 +32,7 @@ export class SearchRepository<T, S> {
   protected buildSort?: (sort?: string, map?: Attributes | StringMap) => string
   protected total?: string
   constructor(
-    protected db: MinDB,
+    protected db: Executor,
     protected table: string,
     protected attrs?: Attributes,
     buildQ?: (
