@@ -1,3 +1,548 @@
+# sql-core
+
+`sql-core` is a TypeScript library that provides reusable SQL building blocks for application data access. It defines a small database execution contract and builds higher-level functionality on top of it: attribute metadata, SQL statement generation, CRUD repositories, filtered search and pagination, batch writes, streaming writers, transactions, and query logging.
+
+The library is intended to sit between application repositories/use cases and a database-specific adapter. It does **not** create database connections or include a MySQL, PostgreSQL, SQL Server, Oracle, or SQLite driver.
+
+## Contents
+
+- [Design](#design)
+- [Installation and build](#installation-and-build)
+- [Database contracts](#database-contracts)
+- [Attribute metadata](#attribute-metadata)
+- [CRUD repository](#crud-repository)
+- [Search and pagination](#search-and-pagination)
+- [SQL builders](#sql-builders)
+- [Batch and streaming writes](#batch-and-streaming-writes)
+- [Transactions](#transactions)
+- [Query logging](#query-logging)
+- [Public API overview](#public-api-overview)
+- [Important behavior and limitations](#important-behavior-and-limitations)
+- [Package layout and API note](#package-layout-and-api-note)
+
+## Design
+
+`sql-core` separates database execution from SQL generation and repository behavior.
+
+```mermaid
+flowchart TD
+    A[Application service / use case] --> B[Repository or query helper]
+    B --> C[sql-core]
+    C --> D[Executor / DB contract]
+    D --> E[Database-specific adapter]
+    E --> F[(SQL database)]
+
+    C --- G[Attribute metadata]
+    C --- H[SQL builders]
+    C --- I[Search and pagination]
+    C --- J[Batch writers]
+    C --- K[Logging decorators]
+```
+
+The application supplies an object implementing `Executor` or `DB`. The repository classes use that object to execute generated SQL. Placeholder syntax and result mapping are delegated to the adapter.
+
+The main responsibilities are:
+
+| Area | Responsibility |
+|---|---|
+| Metadata | Describe property-to-column mapping, keys, types, boolean values, version fields, and timestamp fields |
+| SQL builders | Build parameterized `SELECT`, `INSERT`, `UPDATE`, and `DELETE` statements |
+| Repositories | Provide reusable read, CRUD, and searchable repository implementations |
+| Search | Convert filter objects into SQL conditions, sorting, projection, and pagination |
+| Batch | Generate and execute single-row, multi-row, and buffered writes |
+| Transactions | Define transaction contracts and allow repository methods to use a supplied transaction |
+| Logging | Wrap an executor/database and log query outcomes and durations |
+
+## Installation and build
+
+```bash
+npm install sql-core
+```
+
+The package metadata in this source archive declares:
+
+- Package name: `sql-core`
+- Version: `0.1.14`
+- CommonJS entry point: `lib/index.js`
+- TypeScript entry point: `src/index.ts`
+- Build command: `npm run build:lib`
+- Clean command: `npm run clean:lib`
+
+The build uses the TypeScript compiler (`tsc`). The package has TypeScript `^3.3.3333` as a development dependency. There is no test script or database-driver dependency declared in the supplied `package.json`.
+
+Import the library from the package root:
+
+```ts
+import {
+  Attributes,
+  DB,
+  Executor,
+  SqlRepository,
+  CRUDRepository,
+} from "sql-core"
+```
+
+## Database contracts
+
+The library defines the database interfaces in `src/metadata.ts`.
+
+### `Executor`
+
+`Executor` is the minimum contract used by repository and query helpers:
+
+```ts
+interface Executor {
+  driver: string
+  param(i: number): string
+  execute(sql: string, args?: any[]): Promise<number>
+  executeBatch(statements: Statement[], requireFirstAffected?: boolean): Promise<number>
+  query<T>(
+    sql: string,
+    args?: any[],
+    m?: StringMap,
+    bools?: Attribute[],
+  ): Promise<T[]>
+  queryOne<T>(
+    sql: string,
+    args?: any[],
+    m?: StringMap,
+    bools?: Attribute[],
+  ): Promise<T | null>
+  executeScalar<T>(sql: string, args?: any[]): Promise<T | null>
+  count(sql: string, args?: any[]): Promise<number>
+}
+```
+
+The adapter is responsible for:
+
+- Executing SQL and binding the supplied parameter values.
+- Returning affected-row counts from write operations.
+- Returning row arrays from `query` and a single row or `null` from `queryOne`.
+- Implementing `param(i)` using the target database's placeholder format.
+- Handling the optional result-column map (`m`) and boolean metadata (`bools`) when its implementation supports those arguments.
+- Providing the `driver` name used by search behavior.
+
+`MinDB` is a smaller interface containing `driver`, `param`, and `query`. It is suitable for utilities that only need query access.
+
+### `DB` and `Transaction`
+
+`DB` extends `Executor` with `beginTransaction()`:
+
+```ts
+interface DB extends Executor {
+  beginTransaction(): Promise<Transaction>
+}
+```
+
+`Transaction` also implements `Executor` and adds:
+
+```ts
+interface Transaction extends Executor {
+  commit(): Promise<void>
+  rollback(): Promise<void>
+}
+```
+
+`sql-core` defines these contracts; the actual connection, transaction lifecycle, and provider-specific behavior must be implemented by the database adapter.
+
+### Placeholder helpers
+
+The source exports helpers for common placeholder formats:
+
+| Function | Result for `i = 1` |
+|---|---|
+| `buildMsSQLParam(1)` | `@1` |
+| `buildOracleParam(1)` | `:1` |
+| `buildDollarParam(1)` | `$1` |
+
+The repository classes use `db.param` so that SQL generation can remain independent of a specific driver.
+
+## Attribute metadata
+
+The central metadata type is `Attributes`, a dictionary keyed by TypeScript property name:
+
+```ts
+interface Attribute {
+  name?: string
+  column?: string
+  type?: DataType
+  operator?: Operator
+  default?: string | number | Date | boolean
+  key?: boolean
+  q?: boolean
+  noinsert?: boolean
+  noupdate?: boolean
+  version?: boolean
+  ignored?: boolean
+  true?: string | number
+  false?: string | number
+  createdAt?: boolean
+  updatedAt?: boolean
+}
+```
+
+`DataType` includes `string`, `text`, `number`, `integer`, `boolean`, `date`, `datetime`, `time`, `object`, `array`, `binary`, `ObjectId`, and plural variants used by the metadata contract. `Operator` supports `=`, `like`, `!=`, `<>`, `>`, `>=`, `<`, and `<=`.
+
+Example metadata for a `users` table:
+
+```ts
+interface User {
+  id: string
+  username: string | null
+  email: string | null
+  phone: string | null
+  dateOfBirth: Date | null
+}
+
+const userAttributes: Attributes = {
+  id: {
+    type: "string",
+    key: true,
+  },
+  username: {
+    type: "string",
+    q: true,
+  },
+  email: {
+    type: "string",
+    q: true,
+  },
+  phone: {
+    type: "string",
+  },
+  dateOfBirth: {
+    column: "date_of_birth",
+    type: "datetime",
+  },
+}
+```
+
+Metadata properties control SQL generation:
+
+| Property | Meaning in the source |
+|---|---|
+| `column` | Database column name; defaults to the metadata key when omitted |
+| `key` | Marks a primary-key field used by repository load/update/delete operations |
+| `type` | Describes a field for query construction and boolean result metadata |
+| `operator` | Overrides the default comparison behavior for a search filter |
+| `default` | Value used when an insert field is `null`/`undefined` and a default is configured |
+| `q` | Includes a string field in the free-text `q` search |
+| `noinsert` | Excludes the field from generated inserts |
+| `noupdate` | Excludes the field from generated updates |
+| `ignored` | Excludes the field from generated writes, selected metadata fields, and related metadata handling |
+| `version` | Marks an optimistic-lock version field; generated inserts start it at `1` and updates increment it |
+| `true` / `false` | Optional database values used when binding boolean values |
+| `createdAt` / `updatedAt` | Enables automatic timestamp assignment in writer repositories |
+
+`buildMetadata(attrs)` derives:
+
+- `keys`: attributes marked with `key`.
+- `map`: lower-case database column names mapped back to TypeScript property names.
+- `bools`: attributes whose `type` is `boolean`.
+- `fields`: metadata property names that are not `ignored`.
+- `version`, `createdAt`, and `updatedAt`: the corresponding configured property names.
+
+The map and boolean metadata are passed to the adapter's `query` methods. The adapter determines how returned database values are transformed.
+
+Other metadata helpers include `buildMap(attrs)`, `attributes(names, isKey?)`, and `version(attrs)`.
+
+## CRUD repository
+
+`CRUDRepository<T, ID>` combines the writer behavior in `SqlWriter<T>` with read operations. It is suitable for a feature that needs ordinary CRUD operations but does not need the built-in search method.
+
+```ts
+const users = new CRUDRepository<User, string>(
+  db,
+  "users",
+  userAttributes,
+)
+
+await users.create(user)
+
+const user = await users.load("user-001")
+const exists = await users.exist("user-001")
+const allUsers = await users.all()
+const affected = await users.update(user)
+const deleted = await users.delete("user-001")
+```
+
+The repository exposes:
+
+| Method | Behavior |
+|---|---|
+| `metadata()` | Returns the configured `Attributes` object |
+| `all(tx?)` | Selects all rows from the configured table |
+| `load(id, tx?)` | Loads a row by the configured key fields; returns `null` if no row is found |
+| `exist(id, tx?)` | Checks whether a row exists |
+| `create(obj, tx?)` | Builds and executes an insert statement |
+| `update(obj, tx?)` | Builds and executes an update statement |
+| `patch(obj, tx?)` | Delegates to `update`; fields with value `undefined` are omitted by the update builder |
+| `delete(id, tx?)` | Deletes a row by the configured key fields |
+
+The optional `tx` argument allows these operations to use a caller-provided transaction instead of the repository's main executor.
+
+### Other repository classes
+
+| Class / helper | Purpose |
+|---|---|
+| `SqlLoader<T, ID>` | Read-only helper with `all`, `load`, and `exist` |
+| `useGet<T, ID>(...)` / `useLoad` | Creates a `SqlLoader` and returns its bound `load` function |
+| `QueryRepository<T, ID>` | Loads multiple records by an array of IDs, with optional ordering |
+| `SqlWriter<T>` | Base write behavior for insert/update/patch; extended by other repositories |
+| `SqlSearchWriter<T, S>` | Adds create/update/patch behavior to `SearchRepository` |
+| `SqlRepository<T, ID, S>` | Combines search, CRUD, and metadata access |
+| `Query<T, ID, S>` | Search-oriented read helper with `all`, `load`, and `exist` |
+
+`Repository` is an alias of `SqlRepository`. `GenericRepository` and `SqlGenericRepository` are aliases of `CRUDRepository`. `SearchBuilder` is an alias of `SearchRepository`.
+
+### `toDB` and `fromDB` conversion hooks
+
+Repository constructors accept conversion callbacks:
+
+- `toDB` converts an application object before insert/update SQL is built.
+- `fromDB` converts a returned row after it is loaded or searched.
+
+These callbacks are optional. Their exact placement differs by repository class; use the constructor signature of the chosen class when supplying them.
+
+## Search and pagination
+
+`SearchRepository<T, S>` builds a search statement from a filter object and executes it through the configured `Executor`.
+
+```ts
+interface UserFilter {
+  username?: string
+  email?: string
+  q?: string
+  sort?: string
+}
+
+const users = new SqlRepository<User, string, UserFilter>(
+  db,
+  "users",
+  userAttributes,
+)
+
+const result = await users.search(
+  { username: "ada", sort: "username" },
+  20,
+  1,
+)
+
+// result.list: User[]
+// result.total: total number of matching records, when available
+```
+
+The signature is:
+
+```ts
+search(filter: S, limit: number, page?: number, fields?: string[]): Promise<SearchResult<T>>
+```
+
+`SearchResult<T>` contains `list: T[]` and optional `total: number`.
+
+### Filter behavior
+
+The default query builder is `buildQuery`. It uses the filter object's property names to find matching entries in `Attributes`.
+
+| Filter value / metadata | Generated behavior |
+|---|---|
+| Non-empty string, `operator: "="` | Exact equality |
+| Non-empty string, `operator: "like"` | Contains-style match (`%value%`) |
+| Other non-empty string | Prefix match (`value%`) |
+| Number | Uses the configured operator, defaulting to `>=` |
+| Date | Uses the configured operator, defaulting to `>=` |
+| Boolean | Adds a condition only when the operator is `=`, `!=`, or `<>` |
+| Array | Generates an `IN (...)` condition |
+| Date/datetime range object | Supports upper/lower bounds such as `max`, `top`, `endDate`, `upper`, `endTime`, `min`, `startTime`, `startDate`, and `lower` |
+| Number/integer range object | Supports `max`, `top`, `upper`, `min`, and `lower` |
+
+String matching uses `LIKE` by default. `SearchRepository` selects `ILIKE` when `db.driver` is `postgres`.
+
+The filter's `q` property is used for free-text searching across attributes marked `q: true`. The default property name is `q`, but it can be changed in the `SearchRepository` constructor. The default exclusion property is `excluding`; it can also be customized. Exclusions are applied to the configured primary-key column.
+
+### Sorting and selected fields
+
+The default sort property name is `sort`. Sort terms are comma-separated. A leading `-` indicates descending order; a leading `+` or no prefix indicates ascending order:
+
+```ts
+{ sort: "-createdAt,username" }
+```
+
+Sort names are resolved against metadata and checked by the query builder. The optional `fields` argument to `search` restricts the selected columns to configured attributes. If no valid fields are selected, the builder falls back to `*`.
+
+For SQL Server (`db.driver === "mssql"`), when no sort is supplied, the repository attempts to sort by the configured primary key(s), or by the first non-ignored metadata field. It throws if it cannot determine a sort field.
+
+### Pagination behavior
+
+- A missing or non-positive `limit` disables pagination. The result's `total` is then derived from the returned list length.
+- For the normal paging path, the library appends `limit` and `offset` and runs a separate count query.
+- Oracle and SQL Server use a `count(*) over()` paging query and read the total from the configured total column (default: `total`).
+- The default page number is `1` when the supplied page is missing or non-positive.
+
+Provider-specific paging and search logic relies on the `driver` string supplied by the adapter. The source defines the constants `postgres`, `mysql`, `sqlite`, `oracle`, and `mssql` in the relevant modules.
+
+A custom query builder (`buildQ`) or sort builder can be passed to `SearchRepository`, `SqlSearchWriter`, `SqlRepository`, and `Query` where the constructor exposes those parameters.
+
+## SQL builders
+
+`src/build.ts` exports lower-level functions for creating SQL statements without creating a repository:
+
+| Function | Purpose |
+|---|---|
+| `params(length, param, from?)` | Creates a list of parameter placeholders |
+| `select(obj, table, keys, param, i?)` | Builds a select-by-key statement |
+| `exist(obj, table, keys, param, col?, i?)` | Builds an existence-check select statement |
+| `buildToDelete(obj, table, keys, param, i?)` | Builds a delete statement |
+| `buildToInsert(obj, table, attrs, param, ver?, i?)` | Builds a single-row insert statement |
+| `buildToInsertBatch(objs, table, attrs, param, ver?, i?)` | Builds a batch insert statement |
+| `buildToUpdate(obj, table, attrs, param, pks?, ver?, i?)` | Builds an update statement |
+| `buildToUpdateBatch(objs, table, attrs, param, pks?, ver?, notSkipInvalid?)` | Builds multiple update statements |
+| `insert(...)`, `insertBatch(...)` | Build and execute insert statements using a supplied execution callback |
+| `update(...)`, `updateBatch(...)` | Build and execute update statements using supplied execution callbacks |
+| `buildMetadata(attrs)` / `buildMap(attrs)` | Derive metadata and column-name mapping |
+
+The builders return `Statement` objects:
+
+```ts
+interface Statement {
+  query: string
+  params?: any[]
+}
+```
+
+This allows an adapter or application to inspect or execute generated SQL separately.
+
+### Insert behavior
+
+The single-row insert builder:
+
+- Skips fields marked `ignored` or `noinsert`.
+- Uses `default` when a field is `null`/`undefined` and a default is configured.
+- Omits a field that remains `null`/`undefined`.
+- Uses the configured version field as `1` on insert.
+- Applies configured `true`/`false` values when binding booleans.
+
+### Update behavior and optimistic locking
+
+The update builder:
+
+- Skips `undefined` properties, key fields, `ignored` fields, version fields, and fields marked `noupdate`.
+- Includes explicitly supplied `null` values as SQL `null`.
+- Builds the `WHERE` clause from metadata fields marked `key`.
+- When a version field is configured and the object contains a numeric version, increments the version in the `SET` clause and checks the previous version in the `WHERE` clause.
+
+`SqlWriter.update` and its derived repositories add a follow-up existence query when a versioned update affects zero rows. In that path, the implementation returns `-1` when the row does not exist and `0` when the row exists but the version check did not update it. Otherwise, it returns the adapter's affected-row count.
+
+## Batch and streaming writes
+
+`src/batch.ts` exports dedicated helpers for bulk or incremental data writes.
+
+| Class | Behavior |
+|---|---|
+| `SqlInserter<T>` | Builds and executes one insert for one object |
+| `SqlUpdater<T>` | Builds and executes one update for one object |
+| `SqlBatchInserter<T>` | Builds and executes a multi-row insert statement |
+| `SqlBatchUpdater<T>` | Builds multiple update statements and passes them to `executeBatch` |
+| `StreamInserter<T>` | Buffers objects and flushes them through a batch insert builder |
+| `StreamUpdater<T>` | Buffers objects and flushes them through a batch update builder |
+
+The writer classes accept a `map`/`toDB` callback in their constructors to convert objects before building statements. Some also accept `oneIfSuccess`, which changes the returned count to a success count rather than the adapter's affected-row count.
+
+`StreamInserter` and `StreamUpdater` expose `write()` and `flush()`. A positive `size` configures the flush threshold. In the supplied implementation, the default size is `0`, so a write flushes immediately unless a positive threshold is provided. Call `flush()` at the end of an input stream to write any remaining buffered items.
+
+Batch insert generation accepts either a placeholder function or a boolean mode. The boolean mode uses Oracle-style `INSERT ALL ... SELECT * FROM dual` SQL and named `:n` placeholders in the current implementation. Use the function mode for the general multi-row placeholder path and verify the generated SQL for the target database.
+
+## Transactions
+
+Repository methods that accept `tx?: Transaction` use that transaction when provided; otherwise they use the executor passed to the repository constructor.
+
+Typical transaction orchestration is performed by application code through the `DB` contract:
+
+```ts
+const tx = await db.beginTransaction()
+
+try {
+  await users.create(user, tx)
+  await users.update(changedUser, tx)
+  await tx.commit()
+} catch (error) {
+  await tx.rollback()
+  throw error
+}
+```
+
+This example assumes the configured database adapter implements `DB` and that the repository methods receive an adapter-compatible `Transaction`.
+
+## Query logging
+
+`src/log.ts` provides executor/database decorators and logger contracts.
+
+```ts
+interface Logger {
+  level: number
+  debug(msg: string, m?: SimpleMap): void
+  info(msg: string, m?: SimpleMap): void
+  error(msg: string, m?: SimpleMap): void
+  isDebugEnabled(): boolean
+  isInfoEnabled(): boolean
+}
+```
+
+- `log(db, isLog, logger, ...)` returns the original executor when logging is disabled or wraps it in `LogExecutor` when enabled.
+- `useLog(db, isLog, err, lg?, ...)` returns the original database when disabled or wraps it in `LogDB` when an error callback is supplied.
+- `LogExecutor` decorates `execute`, `executeBatch`, `query`, `queryOne`, `executeScalar`, and `count`.
+- `LogDB` also wraps transactions returned by `beginTransaction()` in `LogTransaction`.
+
+The decorator records elapsed time and can include SQL/arguments, result information, and affected-row counts using configurable metadata keys. Query and result logging can expose application data; configure the logger with privacy and secret-handling requirements in mind.
+
+## Public API overview
+
+The TypeScript entry point (`src/index.ts`) re-exports the following modules:
+
+| Module | Main exports |
+|---|---|
+| `metadata` | `Attribute`, `Attributes`, `DataType`, `Operator`, `Statement`, `Executor`, `DB`, `Transaction`, `MinDB`, `StringMap` |
+| `build` | SQL builders, metadata builders, `Metadata` |
+| `query` | `buildQuery`, `buildSort`, parameter helpers, field/range helpers, `LikeType` |
+| `search` | `SearchResult`, pagination and count-query helpers |
+| `search-repository` | `SearchRepository`, `SearchBuilder`, provider constants |
+| `repository` | CRUD, search, query, loader repository classes and aliases |
+| `batch` | Single, batch, and streaming writer classes |
+| `log` | `Logger`, `LogExecutor`, `LogDB`, `LogTransaction`, `log`, `useLog`, `diff` |
+| entry-point helpers | `Config`, `resource`, `Loader`, `toArray`, `map` |
+
+`Config` is a connection-options interface (`connectString`, `host`, `port`, `server`, `database`, `user`, `password`, `multipleStatements`, pool `max`/`min`, and `idleTimeoutMillis`). It is only a type in this library; it does not establish a connection.
+
+`Loader<T>` wraps a query callback and a fixed SQL string; `load()` executes that query with an empty argument list and optional mapping/boolean metadata. `toArray()` normalizes nulls and can JSON-stringify object values when `resource.string` is set to `true`. `map(obj, mapping)` renames object keys using the supplied map.
+
+## Important behavior and limitations
+
+1. **No database driver is included.** Consumers must provide a compatible adapter implementing `Executor` or `DB`.
+2. **Metadata keys and database identifiers must be trusted.** Table and column names are inserted into SQL text; they are not quoted or escaped by a general identifier-quoting layer. Do not use user-supplied table or column names.
+3. **Parameterization is not uniform for every generated value.** Most string/object values are returned through `Statement.params`, but some builders render numbers and empty strings directly into SQL. Review generated statements and adapter behavior for the exact database/provider in use.
+4. **Key metadata is required for key-based operations.** Configure `key: true` for repository primary-key fields. The builders cannot infer the schema's primary key.
+5. **Update is based on supplied object properties.** `undefined` means “do not update this field”; `null` is an explicit value and is written as SQL `null` where applicable.
+6. **Optimistic locking is opt-in.** Mark one attribute with `version: true` and pass the current numeric version in the object to enable the version check/increment path.
+7. **Provider behavior depends on `db.driver` and `db.param`.** Ensure both match the adapter's actual database dialect.
+8. **The package contains legacy aliases.** Prefer the descriptive class names (`CRUDRepository`, `SqlRepository`, `SqlLoader`) in new code; aliases remain exported for compatibility with existing consumers.
+9. **The source archive does not include tests or a driver implementation.** Integration behavior must be validated against the actual database adapter.
+
+## Package layout and API note
+
+The supplied archive contains TypeScript source under `src/` and generated CommonJS files under `lib/`.
+
+The TypeScript entry point exports the modules described above. The checked-in `lib/index.js` also requires and re-exports `./client`, `./health`, and `./map`, and those JavaScript files are present in the archive; however, corresponding `src/client.ts`, `src/health.ts`, and `src/map.ts` files are **not** present. Those compiled-only modules therefore do not have matching source/type definitions in this archive and are not included in the TypeScript API overview above.
+
+Before publishing a rebuilt package or relying on those compiled-only exports, reconcile the source and generated output. The package's `types` field points to `src/index.ts`, so TypeScript consumers should treat the TypeScript source entry point as the typed API contract.
+
+---
+
+Repository: [core-ts/sql](https://github.com/core-ts/sql)
+
+# License
+
+MIT License.
+
 # SQL Repository
 
 A lightweight TypeScript SQL repository library for building CRUD operations, dynamic queries, filtering, sorting, and pagination on top of database-specific executors.
@@ -163,7 +708,7 @@ interface User {
 Create a repository:
 
 ```ts
-const repository = new Repository<User, number, UserSearch>(
+const repository = new Repository<User, number, UserFilter>(
   db,
   "users",
   attrs
